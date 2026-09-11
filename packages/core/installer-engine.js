@@ -623,7 +623,23 @@ function prefixPathForGame(game, opts = {}) {
     const legacy = id && path.join(prefixesDir, id);
     if (legacy && fs.existsSync(legacy)) return legacy;
     const base = String(game.title || game.app_id || id);
-    const safeName = base.replace(/[/\\:*?"<>|]/g, '').trim().slice(0, 64) || String(game.app_id || id);
+    const raw  = base.replace(/[/\\:*?"<>|]/g, '').trim().slice(0, 64);
+    // Trailing dots and spaces are not legal in a Windows path component, and on macOS this
+    // directory's name IS the CrossOver bottle name. CrossOver's 64-bit templates enforce
+    // that rule and fail outright, `cxbottle --create --template win10_64` on a bottle named
+    // "B.I.O.T.A." dies with `'rundll32 win10Install crossover.inf' failed`, while the same
+    // name under the 32-bit `win10` template is accepted. Verified both ways on CrossOver
+    // 26.3; "Foo.Bar" is fine, so it is specifically the trailing character. Stripping it
+    // here rather than in the macOS backend keeps one definition of a game's prefix path.
+    // The slice above runs first on purpose: truncating at 64 can itself expose a trailing
+    // dot that was mid-title.
+    const safeName = raw.replace(/[. ]+$/, '') || String(game.app_id || id);
+    // A prefix created under the older, unstripped name is still the right answer for that
+    // game, renaming the target would orphan a working bottle and the saves inside it.
+    if (safeName !== raw) {
+        const legacyRaw = path.join(prefixesDir, raw);
+        if (fs.existsSync(legacyRaw)) return legacyRaw;
+    }
     return path.join(prefixesDir, safeName);
 }
 
