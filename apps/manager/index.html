@@ -42,9 +42,19 @@
     .win-btn { border: none; border-radius: 0; background: transparent; width: 45px; font-size: 14px; display: flex; align-items: center; justify-content: center; transition: background-color 0.1s; cursor: pointer; color: var(--text_main); }
     .win-btn:hover { background-color: rgba(255,255,255,0.1); color: var(--text_main); transform: none; box-shadow: none; }
     /* macOS: the window itself draws real traffic lights (titleBarStyle:'hidden' in main.js),
-       hide the custom row and leave room at the left instead of drawing our own. */
-    body.platform-darwin .titlebar-controls { display: none; }
+       so hide OUR minimise/maximise/close and leave room at the left for the real ones.
+       ⚠️ Only .win-btn, NOT the whole .titlebar-controls row. That row also carries Home,
+       Library, Downloads, Support and Go Fullscreen, and hiding the container took all five
+       off the macOS build, which is how the mac port shipped with no visible fullscreen
+       button at all. */
+    body.platform-darwin .titlebar-controls .win-btn { display: none; }
     body.platform-darwin .titlebar-brand { padding-left: 78px; }
+    /* The real traffic lights go away in fullscreen, so the space reserved for them should too. */
+    body.platform-darwin.is-fullscreen .titlebar-brand { padding-left: 20px; }
+    /* One button, two glyphs: which one shows is the window's current state, not a guess. */
+    #btn-fullscreen .fs-icon-exit { display: none; }
+    body.is-fullscreen #btn-fullscreen .fs-icon-enter { display: none; }
+    body.is-fullscreen #btn-fullscreen .fs-icon-exit  { display: block; }
     .win-close:hover { background-color: #d32f2f; color: white; }
 
     #app-container { display: flex; flex-direction: column; flex: 1; width: 100%; height: 100%; overflow: hidden; position: relative; }
@@ -1161,6 +1171,10 @@
       <button id="couch-cta" title="Go fullscreen: couch and gamepad mode">
           <svg class="couch-cta-icon" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><path d="M348.3 137.8 A150 150 0 1 0 348.3 374.2" fill="none" stroke="currentColor" stroke-width="56" stroke-linecap="round"/><circle cx="256" cy="256" r="34" fill="currentColor" opacity=".5"/></svg>
         <span class="couch-cta-text">Go Fullscreen</span>
+      </button>
+      <button id="btn-fullscreen" title="Full screen">
+        <svg class="fs-icon-enter" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/></svg>
+        <svg class="fs-icon-exit"  viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3v3a2 2 0 0 1-2 2H3m18 0h-3a2 2 0 0 1-2-2V3m0 18v-3a2 2 0 0 1 2-2h3M3 16h3a2 2 0 0 1 2 2v3"/></svg>
       </button>
       <button id="btn-min" class="win-btn">−</button>
       <button id="btn-max" class="win-btn">□</button>

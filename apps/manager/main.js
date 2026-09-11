@@ -174,6 +174,11 @@ function createWindow () {
     // shared DB so the Play/Install buttons reflect external changes.
     win.on('focus', () => { try { win.webContents.send('window-refocused'); } catch {} });
 
+    // Keep the titlebar's fullscreen button showing the truth. Both events, because fullscreen
+    // can start or end without our button being the cause.
+    for (const ev of ['enter-full-screen', 'leave-full-screen'])
+        win.on(ev, () => { try { win.webContents.send('window-fullscreen-changed', win.isFullScreen()); } catch {} });
+
     // Save window size/position when closing
     win.on('close', () => {
         if (!win.isMaximized() && !win.isMinimized()) {
@@ -3586,6 +3591,13 @@ ipcMain.on('window-maximize', () => {
     if(win) { if(win.isMaximized()) win.unmaximize(); else win.maximize(); }
 });
 ipcMain.on('window-close', () => { const win = BrowserWindow.getFocusedWindow(); if(win) win.close(); });
+// Real fullscreen, not maximise. On macOS the green traffic light does this too, but it sits
+// inset inside our own titlebar and vanishes once fullscreen starts, so the in-window button
+// is also the way back out.
+ipcMain.on('window-toggle-fullscreen', () => {
+    const win = BrowserWindow.getFocusedWindow();
+    if (win) win.setFullScreen(!win.isFullScreen());
+});
 
 const STEAM_LANG_MAP = { en: 'english', pt_BR: 'brazilian' };
 async function fetchDescI18n(appId, enDesc) {
