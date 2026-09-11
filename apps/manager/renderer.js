@@ -1982,6 +1982,16 @@ document.getElementById('btn-min').addEventListener('click', () => window.api.mi
 document.getElementById('btn-max').addEventListener('click', () => window.api.maximizeApp());
 document.getElementById('btn-close').addEventListener('click', () => window.api.closeApp());
 
+// Fullscreen is shown on every host: it is a window state, not window decoration, so unlike
+// minimise/maximise/close it is not something a compositor or macOS takes over. The label and
+// glyph follow the window's actual state, which main.js reports on both transitions.
+const _btnFullscreen = document.getElementById('btn-fullscreen');
+_btnFullscreen?.addEventListener('click', () => window.api.toggleFullscreen());
+window.api.onFullscreenChanged?.(on => {
+    document.body.classList.toggle('is-fullscreen', !!on);
+    if (_btnFullscreen) _btnFullscreen.title = on ? 'Leave full screen' : 'Full screen';
+});
+
 // ── DOS GAMES: which DOSBox runs them ──────────────────────────────────────
 // The status line is the whole point of the card: "Native" is only meaningful if a
 // native DOSBox is actually installed, so say plainly whether one is, and how to get it.
