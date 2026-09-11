@@ -603,6 +603,15 @@ function ensureBottle(prefix, runtimePath) {
         proc.stderr.on('data', d => { if (err.length < 4000) err += d; });
         proc.on('close', code => {
             if (code === 0 && isRuntimeDir(prefix)) { resolve({ bottleDir, bottleName }); return; }
+            // cxbottle can fail PART WAY THROUGH and still leave a system.reg behind, which is
+            // exactly what isRuntimeDir() reads as "a real bottle". Left there, the next launch
+            // skips creation altogether and runs the game against a half-built drive_c with no
+            // Program Files in it, failing in a way that no longer mentions bottles at all.
+            // Observed for real: a failed win10_64 create left drive_c holding only users/ and
+            // windows/ plus a 109K system.reg. Clearing it means the next attempt is a real
+            // attempt. clearForCreate refuses to touch anything that is not bottle wreckage,
+            // so a prefix the user pointed at their own folder is still safe here.
+            try { clearForCreate(prefix); } catch {}
             const tail = err.trim().split('\n').filter(Boolean).slice(-3).join('; ');
             reject(new Error(
                 `Could not create a CrossOver bottle for this game (cxbottle exit ${code})` +
