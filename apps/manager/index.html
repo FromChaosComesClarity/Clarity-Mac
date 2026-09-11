@@ -83,29 +83,34 @@
     .dlm-clickable { cursor: pointer; }
     .dlm-clickable:hover { color: var(--accent); text-decoration: underline; }
 
-    /* Couch call-to-action, compact pill inside the titlebar, just before the window controls */
-    #couch-cta { -webkit-app-region: no-drag; align-self: center; display: flex; align-items: center; gap: 7px;
-        height: 25px; margin: 0 10px 0 4px; padding: 0 13px 0 5px;
-        background: linear-gradient(135deg, #2C1E16 0%, #432818 55%, #5a3a22 100%);
-        border: 1px solid #D4A373; border-radius: 50px; cursor: pointer; font-family: var(--ui-font, 'Raleway'), sans-serif;
-        box-shadow: 0 0 10px rgba(212,163,115,0.25);
+    /* The two titlebar pills, Couch and Support. Same shape, same palette, and that palette is
+       the active theme's, not a fixed one.
+       ⚠️ These were hardcoded to #2C1E16 / #432818 / #D4A373 / #FFE6A7, which is not an
+       arbitrary set of browns: it is verbatim the "Couch" entry in renderer.js's theme table
+       (its bg / bg_menu / accent / text_main). So the pills wore the Couch theme whatever
+       theme was actually selected, and every other theme had two coffee-coloured buttons in
+       the corner. The tokens below are the same roles those literals filled, which is why
+       nothing moves for someone on Couch and everyone else finally gets their own colours. */
+    .titlebar-cta { -webkit-app-region: no-drag; align-self: center; display: flex; align-items: center;
+        height: 25px; border-radius: 50px; cursor: pointer; font-family: var(--ui-font, 'Raleway'), sans-serif;
+        background: linear-gradient(135deg, var(--bg) 0%, var(--bg_menu) 55%,
+                                    color-mix(in srgb, var(--bg_menu) 78%, var(--accent)) 100%);
+        border: 1px solid var(--accent);
+        box-shadow: 0 0 10px color-mix(in srgb, var(--accent) 25%, transparent);
         transition: box-shadow 0.18s ease, border-color 0.18s ease, transform 0.12s ease; }
-    #couch-cta:hover { border-color: #FFE6A7; box-shadow: 0 0 16px rgba(212,163,115,0.6); }
-    #couch-cta:active { transform: scale(0.96); }
+    .titlebar-cta:hover { border-color: var(--text_main);
+        box-shadow: 0 0 16px color-mix(in srgb, var(--accent) 60%, transparent); }
+    .titlebar-cta:active { transform: scale(0.96); }
+    .titlebar-cta span { font-size: 10px; font-weight: 900; letter-spacing: 0.4px;
+        color: var(--text_main); white-space: nowrap; }
+    /* Couch call-to-action, compact pill inside the titlebar, just before the window controls */
+    #couch-cta { gap: 7px; margin: 0 10px 0 4px; padding: 0 13px 0 5px; }
     .couch-cta-icon { width: 19px; height: 19px; flex-shrink: 0; }
     .rail-mark { width: 20px; height: 20px; color: var(--accent); }
-    .couch-cta-text { font-size: 10px; font-weight: 900; letter-spacing: 0.4px; color: #FFE6A7; white-space: nowrap; }
-    /* Support call-to-action, amber pill (same family as the Couch pill), red pixel heart */
-    #support-cta { -webkit-app-region: no-drag; align-self: center; display: flex; align-items: center; gap: 6px;
-        height: 25px; margin: 0 4px 0 4px; padding: 0 13px 0 11px;
-        background: linear-gradient(135deg, #2C1E16 0%, #432818 55%, #5a3a22 100%);
-        border: 1px solid #D4A373; border-radius: 50px; cursor: pointer; font-family: var(--ui-font, 'Raleway'), sans-serif;
-        box-shadow: 0 0 10px rgba(212,163,115,0.25);
-        transition: box-shadow 0.18s ease, border-color 0.18s ease, transform 0.12s ease; }
-    #support-cta:hover { border-color: #FFE6A7; box-shadow: 0 0 16px rgba(212,163,115,0.6); }
-    #support-cta:active { transform: scale(0.96); }
+    /* Support call-to-action, same pill, red pixel heart. The heart keeps its own red: it is
+       artwork that means something, not chrome, and it reads as a heart in every theme. */
+    #support-cta { gap: 6px; margin: 0 4px 0 4px; padding: 0 13px 0 11px; }
     .support-cta-heart { width: 13px; height: 12px; flex-shrink: 0; filter: drop-shadow(0 0 3px rgba(255,75,62,0.55)); }
-    .support-cta-text { font-size: 10px; font-weight: 900; letter-spacing: 0.4px; color: #FFE6A7; white-space: nowrap; }
     /* Playlist multi-select rows */
     .pl-select-row { padding:10px 14px; cursor:pointer; user-select:none; display:flex; align-items:center; gap:10px; font-size:12px; font-weight:900; color:var(--text_sec); border-bottom:1px solid var(--border); transition:background 0.1s; font-family:inherit; flex-shrink:0; }
     .pl-select-row:last-child { border-bottom:none; }
@@ -1156,7 +1161,7 @@
         <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
         <span id="dl-badge" style="display:none; position:absolute; top:-1px; right:1px; min-width:14px; height:14px; padding:0 3px; border-radius:7px; background:var(--accent); color:var(--bg); font-size:9px; font-weight:900; line-height:14px; text-align:center; box-sizing:border-box;"></span>
       </button>
-      <button id="support-cta" title="Support the project, ways to donate &amp; help">
+      <button id="support-cta" class="titlebar-cta" title="Support the project, ways to donate &amp; help">
         <svg class="support-cta-heart" viewBox="0 0 7 6" shape-rendering="crispEdges" xmlns="http://www.w3.org/2000/svg">
           <rect x="1" y="0" width="2" height="1" fill="#ff4b3e"/>
           <rect x="4" y="0" width="2" height="1" fill="#ff4b3e"/>
@@ -1168,7 +1173,7 @@
         </svg>
         <span class="support-cta-text">Support</span>
       </button>
-      <button id="couch-cta" title="Go fullscreen: couch and gamepad mode">
+      <button id="couch-cta" class="titlebar-cta" title="Go fullscreen: couch and gamepad mode">
           <svg class="couch-cta-icon" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><path d="M348.3 137.8 A150 150 0 1 0 348.3 374.2" fill="none" stroke="currentColor" stroke-width="56" stroke-linecap="round"/><circle cx="256" cy="256" r="34" fill="currentColor" opacity=".5"/></svg>
         <span class="couch-cta-text">Go Fullscreen</span>
       </button>
