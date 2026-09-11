@@ -577,9 +577,25 @@ function ensureBottle(prefix, runtimePath) {
 
     const cxbottle = path.join(toolsDir, 'cxbottle');
     return new Promise((resolve, reject) => {
+        // win10_64, NOT win10. The plain `win10` template builds a 32-bit bottle
+        // (WineArch=win32, a drive_c with no "Program Files (x86)"), and a 64-bit-only game
+        // in one dies with `could not load kernel32.dll, status c000007b` before a window
+        // ever appears. Measured by hand against CrossOver 26.3: `--template win10` → win32,
+        // `--template win10_64` → win64, and the bottles CrossOver's own UI creates are win64,
+        // so this only ever matched the GUI's behaviour by accident. A win64 bottle runs
+        // 32-bit executables too, so this is a superset, not a trade-off.
+        //
+        // ⚠️ `--param Bottle:WineArch=win64` is NOT the lever it looks like: it rewrites the
+        // string in cxbottle.conf while still building a 32-bit prefix, producing a bottle
+        // that misreports its own architecture. The template is the only thing that decides.
+        //
+        // Bottles that already exist are untouched: isRuntimeDir() above returns early for
+        // them, and a 32-bit game in a win32 bottle keeps working. Deleting such a prefix is
+        // what rebuilds it 64-bit, which is what diagnose()'s BAD_EXE message asks for.
+        //
         // stderr is kept rather than discarded: when this fails it is the only thing
         // that says why, and "cxbottle exit 1" on its own is not a diagnosis.
-        const proc = spawn(cxbottle, ['--bottle', bottleName, '--create', '--template', 'win10'], {
+        const proc = spawn(cxbottle, ['--bottle', bottleName, '--create', '--template', 'win10_64'], {
             env: { ...process.env, CX_BOTTLE_PATH: bottleDir },
             stdio: ['ignore', 'ignore', 'pipe'],
         });
@@ -722,6 +738,14 @@ function diagnose(log) {
         return { code: 'MISSING_RUNTIME', message: 'The CrossOver bottle for this game is missing or could not be created.' };
     if (!findWineCached())
         return { code: 'NO_RUNTIME', message: 'CrossOver was not found.' };
+    // A 64-bit executable in a 32-bit bottle, i.e. one built before ensureBottle started
+    // asking for win10_64. Wine reports it as a kernel32 load failure carrying
+    // STATUS_INVALID_IMAGE_FORMAT (c000007b), which says nothing about EXE formats, so the
+    // patterns below never matched and the user was told only that the game "closed
+    // immediately after starting". The fix is to throw the bottle away and let the next
+    // launch rebuild it, so the message says that rather than naming a cause alone.
+    if (/could not load kernel32\.dll|c000007b/i.test(t))
+        return { code: 'BAD_EXE', message: 'This game is 64-bit but its CrossOver bottle is 32-bit. Delete the game\'s prefix folder and launch again to rebuild the bottle.' };
     if (/is not a valid Win32|Bad EXE format/i.test(t))
         return { code: 'BAD_EXE', message: 'The game executable could not be run by CrossOver.' };
     return { code: 'UNKNOWN', message: 'The game closed immediately after starting.' };

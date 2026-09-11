@@ -582,8 +582,20 @@ async function headlessUninstall(store, appId) {
         if (safe) { try { fs.rmSync(installPath, { recursive: true, force: true }); } catch {} }
     }
     writeProgress({ ...base, step: 'uninstalling', percent: 50, message: 'Removing Wine prefix...' });
+    // Only ever delete a prefix WE created, i.e. one living under prefixesDir. `prefix_path`
+    // is user-settable (the Manager's compat dialog invites exactly that), and pointing it at
+    // a shared CrossOver bottle is legitimate, it is how a game installed into an existing
+    // bottle gets launched at all. Unguarded, this line would then take the entire bottle and
+    // every other game inside it, on an uninstall of one game. Same reasoning as the
+    // install_path guard above, which already refuses to delete outside the known bases.
     const prefixPath = prefixPathForGame(game);
-    if (fs.existsSync(prefixPath)) { try { fs.rmSync(prefixPath, { recursive: true, force: true }); } catch {} }
+    const ownPrefix = (() => {
+        if (!prefixPath || !prefixesDir) return false;
+        const base = path.resolve(prefixesDir);
+        const p    = path.resolve(prefixPath);
+        return p !== base && p.startsWith(base + path.sep);
+    })();
+    if (ownPrefix && fs.existsSync(prefixPath)) { try { fs.rmSync(prefixPath, { recursive: true, force: true }); } catch {} }
 
     if (store === 'epic') {
         const leg = findLegendary();
