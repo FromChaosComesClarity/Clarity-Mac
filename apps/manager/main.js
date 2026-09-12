@@ -1335,7 +1335,7 @@ ipcMain.handle('custom-folder-add', (_, { folder, executable, title } = {}) => {
 ipcMain.handle('custom-iwad-options', (_, installerGameId) => {
     if (!installerGameId || !ensureInstallerEngine()) return null;
     try {
-        const row = _installerEngineDb.prepare('SELECT install_path, launch_args FROM games WHERE id=?').get(installerGameId);
+        const row = _installerEngineDb.prepare('SELECT install_path, executable, launch_args FROM games WHERE id=?').get(installerGameId);
         if (!row || !row.install_path || !/-file\b/i.test(row.launch_args || '')) return null;
         const iwads = customInstallers.listIwads(row.install_path);
         if (iwads.length < 2) return null;
@@ -1343,7 +1343,9 @@ ipcMain.handle('custom-iwad-options', (_, installerGameId) => {
             iwads,
             current: customInstallers.currentIwad(row.launch_args),
             // The full line with the choice applied, ready to hand back to launch-game.
-            argsFor: Object.fromEntries(iwads.map(i => [i.file, customInstallers.withIwad(row.launch_args, i.file)])),
+            // The engine goes with it: a .app needs an absolute path, see withIwad.
+            argsFor: Object.fromEntries(iwads.map(i => [i.file,
+                customInstallers.withIwad(row.launch_args, i.file, { engineRoot: row.install_path, engineExe: row.executable })])),
         };
     } catch { return null; }
 });
@@ -1414,9 +1416,9 @@ ipcMain.handle('custom-set-engine', (_, installerGameId, exe) => {
 ipcMain.handle('custom-set-iwad', (_, installerGameId, iwad) => {
     if (!installerGameId || !ensureInstallerEngine()) return { ok: false, error: 'Installer data not found.' };
     try {
-        const row = _installerEngineDb.prepare('SELECT launch_args FROM games WHERE id=?').get(installerGameId);
+        const row = _installerEngineDb.prepare('SELECT install_path, executable, launch_args FROM games WHERE id=?').get(installerGameId);
         if (!row) return { ok: false, error: 'That game is no longer registered.' };
-        const next = customInstallers.withIwad(row.launch_args, iwad || '');
+        const next = customInstallers.withIwad(row.launch_args, iwad || '', { engineRoot: row.install_path, engineExe: row.executable });
         _installerEngineDb.prepare('UPDATE games SET launch_args=? WHERE id=?').run(next || null, installerGameId);
         return { ok: true, launchArgs: next };
     } catch (e) { return { ok: false, error: e.message }; }
