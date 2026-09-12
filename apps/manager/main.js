@@ -1220,7 +1220,10 @@ ipcMain.handle('custom-install-pick', async (_, recipeId) => {
     const res = await dialog.showOpenDialog(parent, {
         title: recipe ? `Select the ${recipe.title} download` : 'Select the download',
         // Some projects ship a setup.exe rather than an archive; it is unpacked, not run.
-        filters: [{ name: 'Downloads', extensions: ['zip', '7z', 'rar', 'exe', 'tar', 'gz', 'xz'] }],
+        // Asked of the catalogue rather than written out here: this list was fixed, so the
+        // macOS recipes could tell you to download a .dmg that the picker then refused to
+        // let you select. It now widens on its own when a recipe brings a new format.
+        filters: [{ name: 'Downloads', extensions: customInstallers.archiveExtensions() }],
         properties: ['openFile'],
     });
     if (res.canceled || !res.filePaths.length) return { ok: false, canceled: true };
