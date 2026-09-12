@@ -985,6 +985,7 @@ ipcMain.handle('set-launch-target', (_, installerGameId, relPath, taskIndex) => 
 // already own. See packages/core/custom-installers.js for why this is a catalogue of
 // specific recipes rather than one generic folder importer.
 const customInstallers = require('../../packages/core/custom-installers.js');
+const falloutCE = require('../../packages/core/fallout-ce.js');
 
 // ── Which screen games open on (KDE only) ────────────────────────────────────
 // See packages/core/kwin-display.js for why this is a KWin script rather than anything
@@ -4112,6 +4113,34 @@ function _getPico8Bin() {
     const row = db.prepare("SELECT value FROM settings WHERE key='pico8_path'").get();
     return host.pico8.find(row?.value || null, path.join(baseDir, 'GameManagerConfig', 'pico8'));
 }
+
+// ── Fallout / Fallout 2 Community Edition settings ───────────────────────────
+// The ports have no options screen of their own yet, by their own README's admission, so the
+// Manager provides one. Both handlers are no-ops for any other game: falloutCE answers null
+// for an id it does not recognise, so a stale window cannot write into an unrelated install.
+// Where the install lives is looked up here rather than passed in. The renderer has a games.db
+// row, which carries no install_path for a custom install; library.db is the only place that
+// knows, and asking once here keeps the two handlers from disagreeing about it.
+function _fceInstallPath(installerGameId) {
+    if (!falloutCE.variantFor(installerGameId)) return null;      // not a CE game; refuse early
+    if (!ensureInstallerEngine()) return null;
+    try {
+        return _installerEngineDb.prepare('SELECT install_path FROM games WHERE id=? AND installed=1')
+                                 .get(String(installerGameId))?.install_path || null;
+    } catch { return null; }
+}
+
+ipcMain.handle('fce-read', (_, { installerGameId } = {}) => {
+    const p = _fceInstallPath(installerGameId);
+    if (!p) return { ok: false, error: 'That game is not an installed Fallout Community Edition.' };
+    return falloutCE.readSettings(installerGameId, p);
+});
+
+ipcMain.handle('fce-write', (_, { installerGameId, patch } = {}) => {
+    const p = _fceInstallPath(installerGameId);
+    if (!p) return { ok: false, error: 'That game is not an installed Fallout Community Edition.' };
+    return falloutCE.writeSettings(installerGameId, p, patch || {});
+});
 
 ipcMain.handle('get-pico8-status', () => ({
     bin: _getPico8Bin(),

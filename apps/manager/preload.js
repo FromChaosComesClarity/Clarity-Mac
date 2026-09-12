@@ -65,6 +65,8 @@ contextBridge.exposeInMainWorld('api', {
                                 scanFlatpak: () => ipcRenderer.invoke('scan-flatpak'),
 
                                 // --- PICO-8 ---
+                                fceRead:  (args) => ipcRenderer.invoke('fce-read', args),
+                                fceWrite: (args) => ipcRenderer.invoke('fce-write', args),
                                 getPico8Status: () => ipcRenderer.invoke('get-pico8-status'),
                                 browsePico8Binary: () => ipcRenderer.invoke('browse-pico8-binary'),
                                 launchPico8Splore: () => ipcRenderer.invoke('launch-pico8-splore'),
