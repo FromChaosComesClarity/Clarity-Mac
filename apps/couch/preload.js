@@ -30,7 +30,7 @@ contextBridge.exposeInMainWorld('api', {
                                 achGet: () => ipcRenderer.invoke('ach-get'),
                                 verifyInstallStatus: (id) => ipcRenderer.invoke('verify-install-status', id),
                                 launcherStates: (id) => ipcRenderer.invoke('launcher-states', id),
-                                openInstallUrl: (url) => ipcRenderer.invoke('open-install-url', url),
+                                openInstallUrl: (url, opts) => ipcRenderer.invoke('open-install-url', url, opts),
                                 onInstallStatusUpdated: (cb) => ipcRenderer.on('install-status-updated', () => cb()),
                                 onGameLaunchFailed: (cb) => ipcRenderer.on('game-launch-failed', (e, d) => cb(d)),
                                 onGameLaunchProgress: (cb) => ipcRenderer.on('game-launch-progress', (e, d) => cb(d)),

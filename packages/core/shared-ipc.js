@@ -99,9 +99,32 @@ function registerSharedHandlers(ctx) {
         try { return fs.readFileSync(filePath).toString('base64'); } catch { return null; }
     });
 
-    ipcMain.handle('open-install-url', async (e, url) => {
-        if (url) await shell.openExternal(url);
+    // A steam:// URL normally goes to the OS handler, which is the right answer nearly
+    // everywhere. The exception is a Windows-only game on macOS: the OS hands it to MAC
+    // Steam, which cannot install it and just shows a store page, so the caller can ask for
+    // the bottled Windows client instead. host.steamBottleUrl answers null on every host
+    // without a drivable bottle, so this always degrades to the previous behaviour.
+    ipcMain.handle('open-install-url', async (e, url, opts = {}) => {
+        if (!url) return { routed: 'none' };
+        if (opts && opts.preferBottle && typeof host.steamBottleUrl === 'function') {
+            const r = host.steamBottleUrl(url);
+            if (r) {
+                // Detached: Steam outlives the click, and this must not hold the IPC open
+                // for the length of a download.
+                const p = spawn(r.cmd, r.args, { env: { ...process.env, ...r.env }, detached: true, stdio: 'ignore' });
+                p.unref();
+                return { routed: 'bottle', bottle: r.bottle, appId: r.appId };
+            }
+        }
+        await shell.openExternal(url);
+        return { routed: 'os' };
     });
+
+    // Steam's own record of an app, for progress reporting. Reads a file; never talks to Steam.
+    ipcMain.handle('steam-bottle-app-state', (e, appId) =>
+        typeof host.steamBottleAppState === 'function'
+            ? host.steamBottleAppState(appId)
+            : { found: false, installed: false, percent: 0, bytesDownloaded: 0, bytesToDownload: 0 });
 
     // ── The Omarchy theme ────────────────────────────────────────────────────
     // Shared rather than Manager-only, and that is a correctness matter, not tidiness:
