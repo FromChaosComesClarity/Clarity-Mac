@@ -4104,14 +4104,10 @@ function humanizeCartName(filename) {
 }
 
 function _getPico8Bin() {
+    // Where PICO-8 lives is a per-host question (a bare binary on Linux, a .app bundle on
+    // macOS), so the backend answers it. `pico8_path` still wins when it is set.
     const row = db.prepare("SELECT value FROM settings WHERE key='pico8_path'").get();
-    if (row?.value && fs.existsSync(row.value)) return row.value;
-    const pico8Dir = path.join(baseDir, 'GameManagerConfig', 'pico8');
-    for (const n of ['pico8', 'pico8_dyn', 'pico8_64']) {
-        const p = path.join(pico8Dir, n);
-        if (fs.existsSync(p)) return p;
-    }
-    return null;
+    return host.pico8.find(row?.value || null, path.join(baseDir, 'GameManagerConfig', 'pico8'));
 }
 
 ipcMain.handle('get-pico8-status', () => ({
@@ -4122,7 +4118,9 @@ ipcMain.handle('get-pico8-status', () => ({
 ipcMain.handle('browse-pico8-binary', async () => {
     const result = await dialog.showOpenDialog({ properties: ['openFile'], title: 'Select PICO-8 Executable' });
     if (result.canceled || !result.filePaths.length) return null;
-    const p = result.filePaths[0];
+    // On macOS the open panel returns PICO-8.app itself, which is a directory. Store what can
+    // actually be spawned rather than what was clicked; a no-op on hosts without bundles.
+    const p = host.pico8.resolveSelected(result.filePaths[0]);
     db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES ('pico8_path', ?)").run(p);
     return p;
 });

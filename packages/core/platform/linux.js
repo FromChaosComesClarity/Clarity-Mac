@@ -535,6 +535,28 @@ function translateDosboxArgs(gogArgs) {
 
 const dosbox = { find: findDosbox, installHint: dosboxInstallHint, translateArgs: translateDosboxArgs };
 
+// ── PICO-8 ───────────────────────────────────────────────────────────────────
+// PICO-8 ships here as a plain executable, dropped into the app's own
+// GameManagerConfig/pico8 folder, and a path picked by hand already IS that executable.
+// Kept as a platform hook only because macOS ships it as a .app bundle instead, see
+// darwin.js; nothing about this host's behaviour changes.
+const PICO8_BINARIES = ['pico8', 'pico8_dyn', 'pico8_64'];
+
+function findPico8(configured, pico8Dir) {
+    if (configured && fs.existsSync(configured)) return configured;
+    for (const n of PICO8_BINARIES) {
+        const p = path.join(pico8Dir, n);
+        if (fs.existsSync(p)) return p;
+    }
+    return null;
+}
+
+const pico8 = {
+    find: findPico8,
+    resolveSelected: p => p,
+    hint: 'Put the pico8 executable in GameManagerConfig/pico8, or pick it with Browse.',
+};
+
 // ═════════════════════════════════════════════════════════════════════════════
 // Windows-game runtime: Proton via umu-run, with bare wine as the last resort.
 // ═════════════════════════════════════════════════════════════════════════════
@@ -1155,5 +1177,6 @@ module.exports = {
     nativeOsKey, gogdlPlatform, legendaryPlatform,
     launchNative, findNativeGameExe, findNativeInstallResult,
     dosbox,
+    pico8,
     runtime,
 };
