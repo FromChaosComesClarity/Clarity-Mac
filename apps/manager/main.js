@@ -3595,13 +3595,6 @@ ipcMain.on('window-maximize', () => {
     if(win) { if(win.isMaximized()) win.unmaximize(); else win.maximize(); }
 });
 ipcMain.on('window-close', () => { const win = BrowserWindow.getFocusedWindow(); if(win) win.close(); });
-// Real fullscreen, not maximise. On macOS the green traffic light does this too, but it sits
-// inset inside our own titlebar and vanishes once fullscreen starts, so the in-window button
-// is also the way back out.
-ipcMain.on('window-toggle-fullscreen', () => {
-    const win = BrowserWindow.getFocusedWindow();
-    if (win) win.setFullScreen(!win.isFullScreen());
-});
 
 const STEAM_LANG_MAP = { en: 'english', pt_BR: 'brazilian' };
 async function fetchDescI18n(appId, enDesc) {

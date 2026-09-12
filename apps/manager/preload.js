@@ -274,7 +274,6 @@ contextBridge.exposeInMainWorld('api', {
 
                                 // --- WINDOW CONTROLS ---
                                 minimizeApp: () => ipcRenderer.send('window-minimize'),
-                                toggleFullscreen: () => ipcRenderer.send('window-toggle-fullscreen'),
                                 // The window can be fullscreened from outside our button (the
                                 // macOS green light, F11, the system menu), so the renderer is
                                 // told the state rather than tracking it.
