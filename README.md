@@ -26,6 +26,18 @@
 > | Compatibility layer | CrossOver, not Proton |
 > | Shared user data | `~/Library/Application Support/clarity` — the app name and bundle id are deliberately unchanged, so an existing library keeps working |
 
+### Installing a release
+>
+macOS blocks these builds on first open and offers no "Open Anyway" button, because they are
+ad-hoc signed rather than notarised. After dragging the app to `/Applications`:
+
+```console
+xattr -dr com.apple.quarantine "/Applications/Clarity Game Manager.app"
+```
+
+See [docs/gatekeeper-note.md](docs/gatekeeper-note.md); `scripts/release-mac.mjs` appends it
+to every release automatically.
+
 
 Every game you own, Steam, GOG, Epic, itch, PICO-8, emulators, fan games, source ports and
 mods, in one place. One AppImage, three faces, no cloud, no launcher farm.
