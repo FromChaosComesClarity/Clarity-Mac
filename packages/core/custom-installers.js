@@ -1020,6 +1020,29 @@ function listRecipes() {
     }));
 }
 
+// Which file extensions the picker should offer on this host. Derived from the recipes'
+// own samples rather than written out by hand, because a hand-written list silently stops
+// matching the catalogue: the macOS entries ask for a .dmg, and the dialog's fixed list of
+// zip/7z/rar/exe/tar/gz/xz meant the file browser would not let you select the very file the
+// recipe was telling you to download.
+//
+// Unioned with that original list rather than replacing it, so this can only ever add
+// formats. selfCheck already proves every sample matches its own recipe's archive pattern,
+// which makes samples a trustworthy source for this.
+const BASE_ARCHIVE_EXTENSIONS = ['zip', '7z', 'rar', 'exe', 'tar', 'gz', 'xz'];
+
+function archiveExtensions() {
+    const out = new Set(BASE_ARCHIVE_EXTENSIONS);
+    for (const r of RECIPES) {
+        if (!(r.hosts || []).includes(process.platform)) continue;
+        for (const sample of (r.samples || [])) {
+            const ext = path.extname(sample).replace(/^\./, '').toLowerCase();
+            if (ext) out.add(ext);
+        }
+    }
+    return [...out].sort();
+}
+
 function getRecipe(id) { return RECIPES.find(r => r.id === id) || null; }
 
 // Which recipe does this download belong to? Returned as a list because a user could
@@ -2042,6 +2065,7 @@ function installMod({ recipeId, archivePath, engineRoot, engineExe, dataRows, se
 }
 
 module.exports = {
+    archiveExtensions,
     RECIPES, DATA_SPECS, installMod, listModCandidates, listIwads,
     scanFolderEntries, addFromFolder, installGameOnEngine, mirrorEngine, readEngines, ENGINES_FILE,
     findModFolderName, extractModFolder,
