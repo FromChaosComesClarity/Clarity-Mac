@@ -487,6 +487,28 @@ const RECIPES = [
     // Unlike every Linux entry above, there is no compatibility layer in this story:
     // these are universal binaries that run on Apple Silicon directly.
     {
+        id: 'minidoom2',
+        hosts: ['darwin'],
+        title: 'Mini Doom 2',
+        kind: 'Fan game',
+        game: '',
+        blurb: 'A standalone Doom-flavoured action platformer. Complete in itself, no Doom data needed. Windows-only, so it runs through CrossOver.',
+        source: {
+            name: 'ModDB, Mini Doom 2',
+            url: 'https://www.moddb.com/games/mini-doom-2/downloads',
+            hint: 'Download the Windows build; the file is named like miniDoom2 v3-1.zip. There is no macOS build, so CrossOver runs it.',
+        },
+        archive: /^minidoom[\s_-]*2.*\.(zip|7z|rar)$/i,
+        samples: ['miniDoom2 v3-1.zip'],
+        dirName: 'Mini Doom 2',
+        // ⚠️ The catalogue's first Windows entry on this host. Everything else here is native,
+        // and `platform: 'windows'` is what routes this one into a CrossOver bottle instead of
+        // being launched directly. The author ships no macOS build, so a translation layer is
+        // the only option rather than a preference.
+        entry: { exe: /^mini\s*doom[\s_-]*2.*\.exe$/i, platform: 'windows' },
+        data: null,
+    },
+    {
         id: 'fallout1-ce',
         hosts: ['darwin'],
         title: 'Fallout Community Edition',
