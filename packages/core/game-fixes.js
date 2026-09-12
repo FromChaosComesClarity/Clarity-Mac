@@ -15,6 +15,15 @@
 //
 // ⚠️ Nothing here fires on a guess. Each entry matches on the executable's own name, so a
 // fix cannot land on a game that merely shares a folder or a title.
+//
+// Two things an entry may narrow itself with:
+//   • exe      , one name or several. A GOG release often ships a launcher, a plain build and
+//                a patched build, and which one Clarity resolves depends on what the store's
+//                own metadata nominated, so an entry that knows only one of them misses.
+//   • platform , when the fix is only correct on one host. A recipe found on macOS is not
+//                automatically right for Linux: different translation layer, different
+//                graphics stack, and a setting that rescues one can be a regression on the
+//                other. An entry without this applies everywhere, as before.
 'use strict';
 
 const fs = require('fs');
@@ -59,6 +68,51 @@ const FIXES = [
         settings: [],
         handledBy: 'shipped-wrapper detection',
     },
+    {
+        id: 'fallout1-hires-macos',
+        title: 'Fallout (High Resolution Patch)',
+        platform: 'darwin',
+        // A GOG install nominates the launcher, Steam's nominates the patched build, and
+        // someone who has set a custom exe may point at the plain one. All three end up
+        // running the same patched renderer, so all three need the fix.
+        exe: ['falloutlauncher.exe', 'falloutwhr.exe', 'falloutw.exe'],
+        symptom: 'A dialog reading "Error initializing video mode 1024x768", then nothing.',
+        why:
+            "Mash's High Resolution Patch ships set to fullscreen, which asks the host to " +
+            "CHANGE DISPLAY MODE to 1024x768. Under CrossOver that request fails and the " +
+            "patch stops with this error. Established on a real install by trying every " +
+            "renderer it offers: DirectX 9 fullscreen and Basic mode both give this exact " +
+            "message, and DirectDraw 7 is refused outright with \"The selected Display Mode " +
+            "is unsupported\", so the renderer is not what is wrong, the mode change is. " +
+            "Windowed needs no mode change and the game starts every time. The resolution " +
+            "itself is left alone: 1024x768 is fine once nothing is switching to it.",
+        // ⚠️ UAC_AWARE is not cosmetic here, it decides WHICH FILE the patch reads. Left at 1
+        // it keeps its settings in the prefix, under AppData/Roaming/Fallout/<hash>/, and the
+        // copy beside the exe, the only one a fix can reliably find, is then ignored. Setting
+        // it to 0 moves authority back to the game folder. Verified by poisoning the AppData
+        // copy with the failing value and watching the game start anyway.
+        settings: [
+            { file: 'f1_res.ini', key: 'UAC_AWARE', value: '0', was: '1' },
+            { file: 'f1_res.ini', key: 'WINDOWED',  value: '1', was: '0' },
+        ],
+        env: {},
+    },
+    {
+        id: 'fallout2-hires-macos',
+        title: 'Fallout 2 (High Resolution Patch)',
+        platform: 'darwin',
+        exe: ['fallout2launcher.exe', 'fallout2hr.exe', 'fallout2.exe', 'falloutclient.exe'],
+        symptom: 'A dialog reading "Error initializing video mode 1024x768", then nothing.',
+        why:
+            "The same High Resolution Patch as Fallout 1, shipping the same fullscreen " +
+            "default, failing the same way for the same reason. Confirmed separately on a " +
+            "real Fallout 2 install rather than assumed from its sibling.",
+        settings: [
+            { file: 'f2_res.ini', key: 'UAC_AWARE', value: '0', was: '1' },
+            { file: 'f2_res.ini', key: 'WINDOWED',  value: '1', was: '0' },
+        ],
+        env: {},
+    },
 ];
 
 // Everything the suite knows how to fix, for the Control Panel and the manual.
@@ -76,7 +130,11 @@ function listFixes() {
 function fixFor(resolvedExe) {
     if (!resolvedExe) return null;
     const exeName = path.basename(resolvedExe).toLowerCase();
-    return FIXES.find(f => f.exe && exeName === f.exe) || null;
+    return FIXES.find(f => {
+        if (f.platform && f.platform !== process.platform) return false;
+        if (!f.exe) return false;
+        return Array.isArray(f.exe) ? f.exe.includes(exeName) : exeName === f.exe;
+    }) || null;
 }
 
 // Variables to merge into the launch environment. Empty for a game with no fix, which is
