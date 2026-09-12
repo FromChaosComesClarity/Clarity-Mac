@@ -104,6 +104,13 @@
     },
     "dmg": {
       "artifactName": "Clarity.dmg"
-    }
+    },
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "FromChaosComesClarity",
+        "repo": "Clarity-Mac"
+      }
+    ]
   }
 }
