@@ -84,8 +84,16 @@ const FIXES = [
             "renderer it offers: DirectX 9 fullscreen and Basic mode both give this exact " +
             "message, and DirectDraw 7 is refused outright with \"The selected Display Mode " +
             "is unsupported\", so the renderer is not what is wrong, the mode change is. " +
-            "Windowed needs no mode change and the game starts every time. The resolution " +
-            "itself is left alone: 1024x768 is fine once nothing is switching to it.",
+            "Windowed needs no mode change and the game STARTS every time. " +
+            "\n\n" +
+            "⚠️ Starts, not plays well. This fix gets you past the error and no further: the " +
+            "game is sluggish afterwards, and measurably just as sluggish with the High " +
+            "Resolution Patch removed entirely and the resolution back at the original " +
+            "640x480, so the cost is CrossOver's DirectDraw path and no setting in this file " +
+            "reaches it. For an actually playable Fallout on this host, install Fallout " +
+            "Community Edition from Custom Installers: it is native, it reads this same " +
+            "install's data, and it reached the Overseer scene in the time CrossOver needed " +
+            "to finish the Interplay logo.",
         // ⚠️ UAC_AWARE is not cosmetic here, it decides WHICH FILE the patch reads. Left at 1
         // it keeps its settings in the prefix, under AppData/Roaming/Fallout/<hash>/, and the
         // copy beside the exe, the only one a fix can reliably find, is then ignored. Setting
@@ -106,7 +114,9 @@ const FIXES = [
         why:
             "The same High Resolution Patch as Fallout 1, shipping the same fullscreen " +
             "default, failing the same way for the same reason. Confirmed separately on a " +
-            "real Fallout 2 install rather than assumed from its sibling.",
+            "real Fallout 2 install rather than assumed from its sibling. The same caveat " +
+            "applies in full: this clears the error, it does not make the game run well, and " +
+            "Fallout II Community Edition in Custom Installers is the native answer.",
         settings: [
             { file: 'f2_res.ini', key: 'UAC_AWARE', value: '0', was: '1' },
             { file: 'f2_res.ini', key: 'WINDOWED',  value: '1', was: '0' },
