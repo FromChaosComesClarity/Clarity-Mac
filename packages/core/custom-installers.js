@@ -408,6 +408,23 @@ const RECIPES = [
 
     // ── macOS ────────────────────────────────────────────────────────────────
     {
+        id: 'folder',
+        hosts: ['darwin'],
+        title: 'A game folder you already have',
+        kind: 'Folder',
+        game: '',
+        folder: true,
+        blurb: 'Point at any folder holding a game and it joins your library, staying where it is. Best for anything self-contained: a fan game that ships its own engine, something you unpacked yourself, or a port with no recipe here yet. A Windows build runs through CrossOver; a .app runs natively. Nothing is copied or moved.',
+        source: {
+            name: 'Your own disk',
+            url: '',
+            hint: 'Clarity scans three levels deep, sorts the likely entry point first, and lets you choose and name it.',
+        },
+        archive: null,
+        dirName: '',
+        data: null,
+    },
+    {
         id: 'gzdoom',
         hosts: ['darwin'],
         title: 'GZDoom',
@@ -486,6 +503,33 @@ const RECIPES = [
     //
     // Unlike every Linux entry above, there is no compatibility layer in this story:
     // these are universal binaries that run on Apple Silicon directly.
+    {
+        id: 'duake',
+        hosts: ['darwin'],
+        title: 'Duake',
+        kind: 'Fan game',
+        game: '',
+        blurb: 'A fan-made Quake-engine game, complete in itself. It ships its own id1 folder, so no Quake data is needed. Windows-only, so it runs through CrossOver.',
+        source: {
+            // ⚠️ Deliberately no url. This one is not distributed anywhere reachable any more,
+            // so pointing at a page would send someone to a dead end. The recipe exists to
+            // recognise and install a copy that is already on disk, which is the only way
+            // anyone will have it.
+            name: 'A copy you already have',
+            url: '',
+            hint: 'Select the archive you already have; it is named like duake_release1.3.zip. There is no public download.',
+        },
+        archive: /^duake.*\.(zip|7z|rar)$/i,
+        samples: ['duake_release1.3.zip'],
+        dirName: 'Duake',
+        // ⚠️ Anchored on duake.exe, and that is not fussiness: console.exe beside it is
+        // BYTE-IDENTICAL (same md5), so a looser pattern could pick the console build and
+        // the game would start into a debug console instead of itself.
+        entry: { exe: /^duake\.exe$/i, platform: 'windows' },
+        // Self-contained: its id1/ carries its own maps, models, progs and gameinfo.txt,
+        // 114MB of them. It needs nothing from a Quake install.
+        data: null,
+    },
     {
         id: 'minidoom2',
         hosts: ['darwin'],
@@ -1793,9 +1837,13 @@ function addFromFolder({ folder, executable, title }) {
         title: name,
         installPath: folder,
         executable,
-        // .sh is the only thing here that is plausibly a native Linux game; everything
-        // else goes through Proton, which is what these folders are.
-        platform: /\.sh$/i.test(executable) ? 'linux' : 'windows',
+        // What counts as "native" is a per-host question, and this was the third place that
+        // answered it for Linux only. A .sh is plausibly a native Linux game; on macOS the
+        // equivalent is a .app bundle, and a .sh there is a shell script, not a game. Anything
+        // else is a Windows build and goes through the host's compatibility layer.
+        platform: process.platform === 'darwin'
+            ? (/\.app$/i.test(executable) ? 'osx' : 'windows')
+            : (/\.sh$/i.test(executable)  ? 'linux' : 'windows'),
         category: '',
     };
 }
