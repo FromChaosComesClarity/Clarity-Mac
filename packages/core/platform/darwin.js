@@ -446,6 +446,63 @@ function translateDosboxArgs(gogArgs) {
 
 const dosbox = { find: findDosbox, installHint: dosboxInstallHint, translateArgs: translateDosboxArgs };
 
+// ── PICO-8 ───────────────────────────────────────────────────────────────────
+// ⚠️ PICO-8 is distributed here as PICO-8.app, not as a bare executable, and a .app is a
+// DIRECTORY. fs.existsSync() answers true for one, so a bundle path sails through every
+// "is it there?" test the callers make and only fails much later, at spawn. Everything
+// below therefore ends at the real executable inside the bundle, never the bundle itself.
+//
+// Where it is worth looking, in order:
+//   1. Whatever was chosen with Browse (run through the same bundle rule, because the macOS
+//      open panel hands back the .app, a package being a file as far as it is concerned).
+//   2. GameManagerConfig/pico8, bundle or bare binary. That is the Linux habit and it keeps
+//      working here, which matters for anyone moving between the two hosts.
+//   3. /Applications and ~/Applications, where a Mac user drags a download without thinking
+//      about it, and which the Linux-shaped lookup never considered.
+const PICO8_BINARIES = ['pico8', 'pico8_dyn', 'pico8_64'];
+const PICO8_BUNDLE   = 'PICO-8.app';
+
+// CFBundleExecutable rather than an assumed filename. It is in fact "pico8" in the shipping
+// build (checked against a real PICO-8.app), but the bundle declares its own entry point and
+// there is no reason to guess at something that is written down.
+function appExecutable(p) {
+    if (!p || !/\.app$/i.test(p)) return p;
+    let name = 'pico8';
+    try {
+        const declared = execSync(`defaults read "${path.join(p, 'Contents', 'Info')}" CFBundleExecutable`,
+            { stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim();
+        if (declared) name = declared;
+    } catch {}
+    const exe = path.join(p, 'Contents', 'MacOS', name);
+    return fs.existsSync(exe) ? exe : p;
+}
+
+// isFile(), not existsSync(): the whole point here is that a directory can masquerade as a
+// present executable, so "it exists" is not the question worth asking.
+function isRunnableFile(p) {
+    try { return !!p && fs.statSync(p).isFile(); } catch { return false; }
+}
+
+function findPico8(configured, pico8Dir) {
+    const chosen = appExecutable(configured);
+    if (isRunnableFile(chosen)) return chosen;
+    for (const dir of [pico8Dir, '/Applications', path.join(HOME, 'Applications')]) {
+        const bundled = appExecutable(path.join(dir, PICO8_BUNDLE));
+        if (isRunnableFile(bundled)) return bundled;
+        for (const n of PICO8_BINARIES) {
+            const bare = path.join(dir, n);
+            if (isRunnableFile(bare)) return bare;
+        }
+    }
+    return null;
+}
+
+const pico8 = {
+    find: findPico8,
+    resolveSelected: appExecutable,
+    hint: 'Put PICO-8.app in /Applications (or in GameManagerConfig/pico8), or pick it with Browse.',
+};
+
 // ═════════════════════════════════════════════════════════════════════════════
 // Windows-game runtime: CrossOver, driven directly through its own `wine --bottle`
 // CLI entry point, not cxstart, not the GUI. Same choice Linux makes with
@@ -800,5 +857,6 @@ module.exports = {
     nativeOsKey, gogdlPlatform, legendaryPlatform,
     launchNative, findNativeGameExe, findNativeInstallResult,
     dosbox,
+    pico8,
     runtime,
 };

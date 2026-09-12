@@ -1111,14 +1111,10 @@ function humanizeCartName(filename) {
 }
 
 function _getPico8Bin() {
+    // Where PICO-8 lives is a per-host question (a bare binary on Linux, a .app bundle on
+    // macOS), so the backend answers it. `pico8_path` still wins when it is set.
     const row = db.prepare("SELECT value FROM settings WHERE key='pico8_path'").get();
-    if (row?.value && fs.existsSync(row.value)) return row.value;
-    const pico8Dir = path.join(baseDir, 'GameManagerConfig', 'pico8');
-    for (const n of ['pico8', 'pico8_dyn', 'pico8_64']) {
-        const p = path.join(pico8Dir, n);
-        if (fs.existsSync(p)) return p;
-    }
-    return null;
+    return host.pico8.find(row?.value || null, path.join(baseDir, 'GameManagerConfig', 'pico8'));
 }
 
 ipcMain.handle('scan-pico8', () => {
