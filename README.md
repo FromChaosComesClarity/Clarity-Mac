@@ -1,15 +1,31 @@
 <div align="center">
 
-# Clarity
+# Clarity for macOS
 
-### *the game manager for Omarchy*
+### *the game manager, macOS edition*
 
-![version](https://img.shields.io/badge/version-1.14.0-2fe0d6?style=flat-square)
+![version](https://img.shields.io/badge/version-1.15.3-2fe0d6?style=flat-square)
 ![status](https://img.shields.io/badge/status-Experimental-ff5fa2?style=flat-square)
-![platform](https://img.shields.io/badge/platform-Linux%20%7C%20macOS-0e1113?style=flat-square)
+![platform](https://img.shields.io/badge/platform-macOS%20(Apple%20Silicon)-0e1113?style=flat-square)
 ![license](https://img.shields.io/badge/license-GPL--3.0-2fe0d6?style=flat-square)
 
 </div>
+
+> **This is the macOS fork.**
+>
+> Forked from [Clarity](https://github.com/FromChaosComesClarity/Clarity) at **v1.15.3**. That
+> repository remains the Linux edition and continues independently; this one carries the macOS
+> work and the two are expected to diverge over time.
+>
+> Nothing here is merged back. If a fix belongs to both, apply it to each deliberately.
+>
+> | | |
+> |---|---|
+> | Linux edition | https://github.com/FromChaosComesClarity/Clarity |
+> | Fork point | `v1.15.3` (`9c2f91b`) |
+> | Compatibility layer | CrossOver, not Proton |
+> | Shared user data | `~/Library/Application Support/clarity` — the app name and bundle id are deliberately unchanged, so an existing library keeps working |
+
 
 Every game you own, Steam, GOG, Epic, itch, PICO-8, emulators, fan games, source ports and
 mods, in one place. One AppImage, three faces, no cloud, no launcher farm.
