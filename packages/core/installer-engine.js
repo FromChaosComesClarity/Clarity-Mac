@@ -680,6 +680,31 @@ function findShippedWrappers(resolvedExe, installPath) {
     return found;
 }
 
+// ── GOG catalogue: which platforms a product offers ──────────────────────────
+// GOG's public catalog API calls a macOS installer's os "mac"; gogdl's own --platform flag
+// (and therefore host.nativeOsKey / games.platform / every launch-time comparison against it)
+// calls the same host "osx". Two GOG APIs, two vocabularies for one OS. Translate before
+// matching, or every Mac-native game in the library silently looks Windows-only.
+const GOG_CATALOG_OS_ALIAS = { mac: 'osx' };
+
+// `platform` is what we would run here; `platforms` is everything GOG offers that this host
+// could ever use, and it is what the install dialog reads to decide whether there is a choice
+// worth showing. Keyed off the backend so a library synced on one OS is not mislabelled for
+// the other.
+//
+// ⚠️ Lives here, and is exported, because apps/installer's gog-list-owned grew its OWN copy of
+// this and never learned about macOS: it filtered to linux|windows and hardcoded 'linux' as
+// the native key, so running it overwrote every windows,osx row with plain windows and took
+// the platform choice away again. One definition, two callers.
+function gogCatalogPlatforms(item) {
+    const oses = [...new Set((item?.downloads?.installers || [])
+        .map(x => GOG_CATALOG_OS_ALIAS[x.os] || x.os).filter(Boolean))];
+    const nativeOs  = host.nativeOsKey;
+    const platform  = oses.includes(nativeOs) ? nativeOs : 'windows';
+    const platforms = oses.filter(o => o === nativeOs || o === 'windows').join(',') || platform;
+    return { platform, platforms };
+}
+
 // ── GOG play tasks ───────────────────────────────────────────────────────────
 // A GOG release often ships more than one way to start. Quake: The Offering has three,
 // GLQuake (the primary, and the one with no music, being redbook-CD-only), WinQuake, and
@@ -2008,21 +2033,8 @@ async function syncOwnedLibrary() {
                 const items = Array.isArray(data) ? data : [data];
                 for (const item of items) {
                     if (!item?.id) continue;
-                    // GOG's public catalog API calls a macOS installer's os "mac"; gogdl's own
-                    // --platform flag (and therefore host.nativeOsKey / games.platform / every
-                    // launch-time comparison against it) calls the same host "osx". Two GOG
-                    // APIs, two vocabularies for the same OS, translate before matching, or
-                    // every Mac-native game in the library silently looks Windows-only.
-                    const GOG_CATALOG_OS_ALIAS = { mac: 'osx' };
-                    const oses      = [...new Set((item.downloads?.installers || [])
-                        .map(x => GOG_CATALOG_OS_ALIAS[x.os] || x.os).filter(Boolean))];
-                    // `platform` is what we would run here; `platforms` is everything GOG
-                    // offers that this host could ever use. Keyed off the backend so a
-                    // library synced on one OS is not mislabelled for the other.
-                    const nativeOs  = host.nativeOsKey;
-                    const runsAs    = oses.includes(nativeOs) ? nativeOs : 'windows';
-                    const platforms = oses.filter(o => o === nativeOs || o === 'windows').join(',') || runsAs;
-                    const is_dlc    = item.game_type && item.game_type !== 'game' ? 1 : 0;
+                    const { platform: runsAs, platforms } = gogCatalogPlatforms(item);
+                    const is_dlc = item.game_type && item.game_type !== 'game' ? 1 : 0;
                     games.push({ id: String(item.id), title: item.title || 'Unknown', platform: runsAs, platforms, is_dlc });
                 }
             }
@@ -2215,6 +2227,7 @@ module.exports = {
     GOG_CLIENT_ID, GOG_CLIENT_SECRET, GOG_REDIRECT_URI,
     syncSharedDb, headlessInstall, headlessUninstall, launchGame, runLegendary, prefixPathForGame,
     getGameInstallInfo, runRedist, injectGogRegistry, gogFetch, getGogToken,
+    gogCatalogPlatforms,
     writeGogAuthConfig, findGogInstallResult, findLinuxGameExe,
     getDiskSpace, gogInstallInfo, epicInstallInfo, epicListUpdates, syncOwnedLibrary, cancelActiveInstall,
     gogListDlcs, gogInstalledDlcs,

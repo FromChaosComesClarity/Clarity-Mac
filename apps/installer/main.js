@@ -1068,9 +1068,9 @@ ipcMain.handle('gog-list-owned', async () => {
             const items = Array.isArray(data) ? data : [data];
             for (const item of items) {
                 if (!item?.id) continue;
-                const oses      = [...new Set((item.downloads?.installers || []).map(x => x.os).filter(Boolean))];
-                const platform  = oses.includes('linux') ? 'linux' : 'windows';
-                const platforms = oses.filter(o => o === 'linux' || o === 'windows').join(',') || platform;
+                // Was a second, macOS-blind copy of this: it filtered to linux|windows and
+                // hardcoded 'linux', so a sync from this face erased every windows,osx row.
+                const { platform, platforms } = installerEngine.gogCatalogPlatforms(item);
                 const is_dlc    = item.game_type && item.game_type !== 'game' ? 1 : 0;
                 games.push({ id: String(item.id), title: item.title || 'Unknown', platform, platforms, is_dlc });
             }
