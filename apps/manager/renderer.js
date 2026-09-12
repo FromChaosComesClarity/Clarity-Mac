@@ -1190,7 +1190,21 @@ async function openInstallerInstall(game) {
     } catch { hasChoice = false; }
     if (platRow) platRow.style.display = hasChoice ? 'flex' : 'none';
     const nativeBtn = $('gi-plat-linux');
-    if (nativeBtn) { nativeBtn.textContent = nativeLabel; nativeBtn.title = `Install the native ${nativeLabel} build`; }
+    // "Install the native Mac Native build" is what the old template produced, because
+    // nativeLabel already contains the word. And the Windows tip named Proton on a host that
+    // has never had one: this is CrossOver here, which is what the runtime layer reports.
+    const winBtn = $('gi-plat-windows');
+    if (nativeBtn) {
+        nativeBtn.textContent = nativeLabel;
+        nativeBtn.title = window.api.platform === 'darwin'
+            ? 'Install the native macOS build, no translation layer involved'
+            : 'Install the native Linux build, no translation layer involved';
+    }
+    if (winBtn) {
+        winBtn.title = window.api.platform === 'darwin'
+            ? 'Install the Windows build (runs through CrossOver)'
+            : 'Install the Windows build (runs through Proton)';
+    }
 
     const fmtB = b => b == null ? '?' : (b >= 1024**3 ? (b/1024**3).toFixed(1) + ' GB' : (b/1024**2).toFixed(0) + ' MB');
 
