@@ -2084,15 +2084,15 @@ document.getElementById('btn-min').addEventListener('click', () => window.api.mi
 document.getElementById('btn-max').addEventListener('click', () => window.api.maximizeApp());
 document.getElementById('btn-close').addEventListener('click', () => window.api.closeApp());
 
-// Fullscreen is shown on every host: it is a window state, not window decoration, so unlike
-// minimise/maximise/close it is not something a compositor or macOS takes over. The label and
-// glyph follow the window's actual state, which main.js reports on both transitions.
-const _btnFullscreen = document.getElementById('btn-fullscreen');
-_btnFullscreen?.addEventListener('click', () => window.api.toggleFullscreen());
-window.api.onFullscreenChanged?.(on => {
-    document.body.classList.toggle('is-fullscreen', !!on);
-    if (_btnFullscreen) _btnFullscreen.title = on ? 'Leave full screen' : 'Full screen';
-});
+// The titlebar had a fullscreen button; it is gone, because macOS already puts one in the
+// window's own green traffic light two centimetres away and a second control for the same
+// state is just clutter.
+//
+// ⚠️ The state tracking stays, and is not dead code. body.is-fullscreen is what reclaims the
+// 78px gap the titlebar reserves for the traffic lights, and those lights are not drawn in
+// fullscreen. Since the green button is now the only way in, this listener is the only thing
+// that notices.
+window.api.onFullscreenChanged?.(on => document.body.classList.toggle('is-fullscreen', !!on));
 
 // ── Fallout / Fallout 2 Community Edition settings ───────────────────────────
 // The native ports keep their options in the same plain text files the 1997 originals used,
@@ -3120,9 +3120,14 @@ document.getElementById('btn-f2p-hide-one')?.addEventListener('click', async () 
 });
 
 // ── CORNER STYLE (sharp vs round) ─────────────────────────────────────────
-// 'sharp' = flat look (corners-flat on body); 'round' = the previous rounded
-// style. One layout now, so it applies unconditionally.
-let _cornersStyle = 'sharp';
+// 'sharp' = flat look (corners-flat on body); 'round' = the rounded style.
+//
+// Round is the default here. Sharp was chosen upstream for a specific reason, that Omarchy
+// draws square corners and an app full of rounded cards on a square desktop reads as foreign.
+// That reasoning is sound and simply does not transfer: macOS rounds everything, from windows
+// to sheets to controls, so on this host the flat look is the one that reads as foreign.
+// An explicit choice is still honoured in both directions; only the unset default moved.
+let _cornersStyle = 'round';
 function applyCornersStyle() {
     document.body.classList.toggle('corners-flat', _cornersStyle === 'sharp');
 }
@@ -3746,7 +3751,8 @@ document.getElementById('btn-titlebar-library')?.addEventListener('click', () =>
 
 (async () => {
     // Sharp is the default, only an explicitly saved 'round' opts back into the rounded style.
-    _cornersStyle = (await window.api.getSetting('corners_style')) === 'round' ? 'round' : 'sharp';
+    // Unset means round on this host; 'sharp' is only ever the result of choosing it.
+    _cornersStyle = (await window.api.getSetting('corners_style')) === 'sharp' ? 'sharp' : 'round';
     document.querySelectorAll('.corners-btn').forEach(b => b.classList.toggle('active', b.dataset.val === _cornersStyle));
     // Release build: the icon side rail is the ONLY available layout, any saved
     // layout_mode is ignored, and the picker card is display:none, so the other
