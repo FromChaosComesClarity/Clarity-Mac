@@ -37,6 +37,7 @@
   },
   "build": {
     "appId": "io.github.fromchaoscomesclarity.clarity",
+    "afterPack": "scripts/afterPack.cjs",
     "productName": "Clarity Game Manager",
     "linux": {
       "target": "AppImage",
