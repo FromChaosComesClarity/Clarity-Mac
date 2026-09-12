@@ -2077,20 +2077,32 @@ const formatArgs = (arr) => arr.map(a => (/\s/.test(a) ? `"${a}"` : a)).join(' '
 
 // Replace, add or drop the -iwad in an existing launch line. An empty iwad removes it,
 // which is what hands the choice back to the engine's own picker at every launch.
-function withIwad(launchArgs, iwad) {
+// ⚠️ `engine` is not optional decoration when the engine is a .app. Picking an IWAD rewrites
+// the launch line, and this used to insert the bare filename it was handed, which resolves
+// only if the engine runs with its own folder as the working directory. A bundle launched
+// through `open` does not, so choosing an IWAD turned a working launch line into
+// "Cannot find a game IWAD" while the -file beside it stayed absolute and correct.
+function withIwad(launchArgs, iwad, engine = {}) {
     const args = parseArgs(launchArgs);
     const out = [];
     for (let i = 0; i < args.length; i++) {
         if (args[i].toLowerCase() === '-iwad') { i++; continue; }   // drop flag and its value
         out.push(args[i]);
     }
-    return formatArgs(iwad ? ['-iwad', iwad, ...out] : out);
+    const { engineRoot = '', engineExe = '' } = engine;
+    const value = (iwad && engineRoot && /\.app$/i.test(String(engineExe)) && !path.isAbsolute(iwad))
+        ? path.join(engineRoot, iwad)
+        : iwad;
+    return formatArgs(value ? ['-iwad', value, ...out] : out);
 }
 
 const currentIwad = (launchArgs) => {
     const args = parseArgs(launchArgs);
     const i = args.findIndex(a => a.toLowerCase() === '-iwad');
-    return i >= 0 && args[i + 1] ? args[i + 1] : '';
+    // basename, because the argument may be an ABSOLUTE path: a bundled engine has no working
+    // directory to resolve a bare name against. The picker keys on plain filenames, so this
+    // has to answer in those terms whichever form the arguments happen to carry.
+    return i >= 0 && args[i + 1] ? path.basename(args[i + 1]) : '';
 };
 
 function installMod({ recipeId, archivePath, engineRoot, engineExe, dataRows, selected, iwad }) {
