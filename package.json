@@ -18,7 +18,8 @@
     "predist": "node scripts/fetch-binaries.mjs",
     "dist": "electron-builder --linux AppImage",
     "postdist": "node scripts/deploy-appimage.mjs",
-    "dist:mac": "electron-builder --mac"
+    "dist:mac": "electron-builder --mac",
+    "release:mac": "node scripts/release-mac.mjs"
   },
   "author": "J.R.A.",
   "license": "GPL-3.0-or-later",
