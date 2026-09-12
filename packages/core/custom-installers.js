@@ -526,9 +526,12 @@ const RECIPES = [
         // BYTE-IDENTICAL (same md5), so a looser pattern could pick the console build and
         // the game would start into a debug console instead of itself.
         entry: { exe: /^duake\.exe$/i, platform: 'windows' },
-        // Self-contained: its id1/ carries its own maps, models, progs and gameinfo.txt,
-        // 114MB of them. It needs nothing from a Quake install.
-        data: null,
+        // ⚠️ NOT self-contained, however much it looks it. Its id1/ carries 114MB of its own
+        // maps, models, progs and gameinfo.txt, and that is exactly what makes the mistake
+        // easy: there is no pak0.pak or pak1.pak anywhere in it, and the engine refuses to
+        // start without them, saying so on a rendered screen rather than in a log. Presence
+        // of content is not the same as presence of what the engine demands.
+        data: 'quake',
     },
     {
         id: 'minidoom2',
