@@ -427,6 +427,9 @@ const RECIPES = [
         // The zip holds GZDoom.app beside a Licenses folder, so flattenSingleRoot leaves it
         // alone and the bundle is found where it sits. Checked against the real download.
         entry: { exe: /^GZDoom\.app$/i, bundle: true, platform: 'osx' },
+        // Which IWAD the engine starts with when several are linked. Doom II because it is
+        // what most mods target; change it in the game's launch arguments to play another.
+        iwad: /^doom2\.wad$/i,
         data: 'doom',
     },
     {
@@ -1627,6 +1630,25 @@ function installFromArchive({ recipeId, archivePath, installRoot, dataRows, data
         if (!linked.ok) return { ok: false, error: linked.error };
     }
 
+    // ⚠️ A bundled engine is launched through `open` and so has no working directory, and
+    // GZDoom in particular does not look beside its own .app: it searches
+    // ~/Library/Application Support/gzdoom and its own ini, neither of which an install has
+    // any business writing. So the data it needs is named on the command line instead, which
+    // keeps everything this install touches inside its own folder.
+    //
+    // One IWAD is chosen rather than all of them, because -iwad takes one. The recipe's own
+    // preference wins, then Doom II, then whatever came first; the choice is editable
+    // afterwards as the game's launch arguments, which is the right place for it to live.
+    let launchArgs = null;
+    if (recipe.entry.bundle && linked && Array.isArray(linked.linked) && linked.linked.length) {
+        const beside = path.dirname(exe);
+        const wads = linked.linked.filter(n => /\.(wad|pk3)$/i.test(n));
+        const pick = (recipe.iwad && wads.find(w => recipe.iwad.test(w)))
+                  || wads.find(w => /^doom2\.wad$/i.test(w))
+                  || wads[0];
+        if (pick) launchArgs = `-iwad "${path.join(beside, pick)}"`;
+    }
+
     return {
         ok: true,
         recipeId: recipe.id,
@@ -1636,6 +1658,7 @@ function installFromArchive({ recipeId, archivePath, installRoot, dataRows, data
         installPath: target,
         executable: path.relative(target, exe) || path.basename(exe),
         platform: recipe.entry.platform,
+        launchArgs,
         dataFrom: data && data.ok ? { path: data.path, title: data.title, linked: linked.linked } : null,
         extraFrom: extra ? extra.title : null,
     };
