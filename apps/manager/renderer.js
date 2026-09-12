@@ -802,11 +802,75 @@ function showLauncherPicker(game, states, mode = 'launch') {
     modal.classList.add('active');
 }
 
+// Installing a Steam game means asking the Steam client to do it; there is no API that
+// installs one without it. On macOS that raises a question the other hosts never face: MAC
+// Steam cannot install a Windows-only title, it just opens a store page and declines, so the
+// request has to go to the Windows client living in the CrossOver bottle instead. MacNative
+// is what decides, and the backend answers "no bottle here" for everything else, so this is
+// the old behaviour everywhere except the one case it was wrong in.
+//
+// ⚠️ Steam owns the confirmation dialog and there is no way to suppress it. So this cannot
+// report "installing" the moment it returns, only "handed to Steam"; what it CAN do is watch
+// the manifest Steam maintains and report honestly from there.
+const _steamInstallsWatched = new Set();
+
+async function _installSteamGame(game, appId) {
+    const winOnly = window.api.platform === 'darwin' && game.MacNative != 1;
+    const r = await window.api.openInstallUrl('steam://install/' + appId, { preferBottle: winOnly })
+                    .catch(() => null) || {};
+    if (r.routed !== 'bottle') return;   // the OS handler has it; its own Steam shows progress
+    _watchSteamBottleInstall(game, appId);
+}
+
+// Polls the file Steam writes, never Steam itself. Two things are being waited for and they
+// are not the same: first the manifest appearing at all, which only happens once the user
+// confirms Steam's dialog, then the bytes arriving.
+async function _watchSteamBottleInstall(game, appId) {
+    const id = String(appId);
+    if (_steamInstallsWatched.has(id)) return;    // a second click must not start a second poll
+    _steamInstallsWatched.add(id);
+    const label = `Installing ${game.Game}`;
+    cpTaskStart(label);
+    cpTaskProgress(0, `${label} — confirm the install in Steam`);
+    const startedAt = Date.now();
+    let sawManifest = false;
+    try {
+        // A big download is a long wait, so the cap is generous; the unconfirmed case below
+        // is what actually ends most of these early.
+        while (Date.now() - startedAt < 6 * 60 * 60 * 1000) {
+            await new Promise(res => setTimeout(res, 3000));
+            const st = await window.api.steamBottleAppState(id).catch(() => null);
+            if (st && st.found) {
+                sawManifest = true;
+                if (st.installed) {
+                    cpTaskProgress(100, `${game.Game} installed`);
+                    // The library's Installed flag comes from the shared DB, which nothing
+                    // updates on its own, the same reconciliation the Control Panel button runs.
+                    try { await window.api.checkAllInstallStatus(); } catch {}
+                    try { await syncInstallerInstalled(); } catch {}
+                    cpTaskEnd(`${game.Game} installed`);
+                    loadGames();
+                    return;
+                }
+                cpTaskProgress(st.percent, `${label} — ${st.percent}%`);
+            } else if (!sawManifest && Date.now() - startedAt > 10 * 60 * 1000) {
+                // Ten minutes and Steam has still queued nothing: the dialog was dismissed, or
+                // never reached. Saying so beats a progress bar that sits at zero all evening.
+                cpTaskEnd('Steam install was not confirmed');
+                return;
+            }
+        }
+        cpTaskEnd('Stopped watching this Steam install');
+    } finally {
+        _steamInstallsWatched.delete(id);
+    }
+}
+
 // Route an uninstalled launcher in the picker to the right installer for its store.
 function _installLauncher(game, store, cmd) {
     if (store === 'steam') {
         const appId = _steamAppId(game);
-        if (appId) { window.api.openInstallUrl('steam://install/' + appId); return; }
+        if (appId) { _installSteamGame(game, appId); return; }
     }
     if (store === 'gog' || store === 'epic') {
         if (/^(gog|epic)_/i.test(game.InstallerGameId || '')) { openInstallerInstall(game); return; }

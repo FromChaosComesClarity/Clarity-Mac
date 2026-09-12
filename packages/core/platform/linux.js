@@ -338,6 +338,10 @@ function steamLaunchCommand(appId) { return `steam steam://rungameid/${appId} -s
 function steamBottleForApp()       { return null; }
 function parseSteamBottleCommand() { return null; }
 function steamBottleLaunch()       { return { error: 'Bottled Steam games are a macOS-only feature.' }; }
+// Null means "not my job": shared-ipc falls back to the OS handler, which on this host is
+// the real Steam client and needs no help.
+function steamBottleUrl()          { return null; }
+function steamBottleAppState()     { return { found: false, installed: false, percent: 0, bytesDownloaded: 0, bytesToDownload: 0 }; }
 
 // ── Other stores this host knows about ───────────────────────────────────────
 // Flatpak: games installed outside GOG/Epic/Steam that still announce themselves through a
@@ -1174,6 +1178,7 @@ module.exports = {
     which, dirSizeBytesCommand, dirSizeHumanCommand, legendaryConfigDir,
     steamLibraryPaths, steamLaunchCommand, extraStore, desktop,
     steamBottleForApp, steamBottleLaunch, parseSteamBottleCommand,
+    steamBottleUrl, steamBottleAppState,
     nativeOsKey, gogdlPlatform, legendaryPlatform,
     launchNative, findNativeGameExe, findNativeInstallResult,
     dosbox,

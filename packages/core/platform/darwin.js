@@ -348,6 +348,64 @@ function steamBottleLaunch(bottleName, appId) {
     };
 }
 
+// ── Driving a bottled Steam with steam:// URLs ───────────────────────────────
+// A steam:// URL handed to macOS goes to MAC Steam, and for a Windows-only title that client
+// has nothing to install: it can only open a store page and decline. The Windows client in
+// the bottle can do it, and a URL is exactly how Steam is meant to be driven. The bottle's
+// own registry spells out the contract:
+//     [Software\Classes\steam\Shell\Open\Command]
+//     @="\"C:\Program Files (x86)\Steam\steam.exe\" -- \"%1\""
+// i.e. argv, the same channel steamBottleLaunch already uses for -applaunch. Verified end to
+// end on a real bottle with steam://install/2824660: Steam logged
+//   ExecCommandLine: ""C:\Program Files (x86)\Steam\steam.exe" steam://install/2824660"
+//   ExecuteSteamURL: "steam://install/2824660"
+// and then fetched that app's info.
+//
+// ⚠️ Steam shows its OWN confirmation dialog for an install and there is no flag that
+// suppresses it. This STARTS an install; it cannot complete one unattended. What happens
+// afterwards is readable from disk, see steamBottleAppState.
+const STEAM_URL_APPID = /^steam:\/\/(?:install|uninstall|validate|rungameid|run)\/(\d+)/i;
+
+function steamBottleUrl(url) {
+    const cx = findCrossOver();
+    if (!cx) return null;
+    const appId  = STEAM_URL_APPID.exec(String(url || ''))?.[1] || null;
+    // The bottle already holding this app wins, so an uninstall or a validate lands on the
+    // copy that exists rather than on whichever bottle happens to be enumerated first.
+    const bottle = (appId && steamBottleForApp(appId)) || bottleSteamLibraries()[0]?.bottle || null;
+    if (!bottle) return null;
+    return {
+        cmd:  cx.wine,
+        args: ['--bottle', bottle.name, '--no-gui', bottle.steamExe, '--', String(url)],
+        env:  { CX_BOTTLE_PATH: bottle.parent },
+        bottle: bottle.name,
+        appId,
+    };
+}
+
+// What Steam itself records for an app, read out of the manifest it maintains. StateFlags 4
+// is "fully installed"; the byte counters are the same pair its own progress bar draws from.
+// Nothing here talks to Steam or holds a lock, so it is safe to poll on a timer.
+function steamBottleAppState(appId) {
+    const id = String(appId || '');
+    for (const lib of bottleSteamLibraries()) {
+        let txt;
+        try { txt = fs.readFileSync(path.join(lib.dir, `appmanifest_${id}.acf`), 'utf8'); }
+        catch { continue; }
+        const num   = k => { const m = new RegExp(`"${k}"\\s+"(\\d+)"`).exec(txt); return m ? Number(m[1]) : 0; };
+        const total = num('BytesToDownload'), done = num('BytesDownloaded'), flags = num('StateFlags');
+        return {
+            found: true, bottle: lib.bottle.name, stateFlags: flags,
+            // A manifest exists from the moment Steam queues the app, so "installed" has to
+            // mean the bytes arrived too, not merely that the file is there.
+            installed: flags === 4 && total > 0 && done >= total,
+            bytesDownloaded: done, bytesToDownload: total,
+            percent: total > 0 ? Math.min(100, Math.round((done / total) * 100)) : 0,
+        };
+    }
+    return { found: false, installed: false, percent: 0, bytesDownloaded: 0, bytesToDownload: 0 };
+}
+
 // Parse a steambottle:// command back into its parts. One place, so the launcher,
 // the label and the install check cannot drift apart on the format.
 function parseSteamBottleCommand(cmd) {
@@ -861,6 +919,7 @@ module.exports = {
     which, dirSizeBytesCommand, dirSizeHumanCommand, legendaryConfigDir,
     steamLibraryPaths, steamLaunchCommand, extraStore, desktop,
     steamBottleForApp, steamBottleLaunch, parseSteamBottleCommand,
+    steamBottleUrl, steamBottleAppState,
     nativeOsKey, gogdlPlatform, legendaryPlatform,
     launchNative, findNativeGameExe, findNativeInstallResult,
     dosbox,
