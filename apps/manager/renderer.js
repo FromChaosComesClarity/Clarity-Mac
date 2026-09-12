@@ -2094,6 +2094,117 @@ window.api.onFullscreenChanged?.(on => {
     if (_btnFullscreen) _btnFullscreen.title = on ? 'Leave full screen' : 'Full screen';
 });
 
+// ── Fallout / Fallout 2 Community Edition settings ───────────────────────────
+// The native ports keep their options in the same plain text files the 1997 originals used,
+// and their README says an in-game interface is still to come. This is it.
+//
+// Controls are built from the schema the backend sends rather than hardcoded here, so a key a
+// given release does not ship produces no control at all instead of one that silently writes
+// a setting nothing reads. The backend drops absent keys for exactly that reason.
+let _fceGame = null;
+
+function _fceControl(o) {
+    const id = `fce-opt-${o.key}`;
+    const label = `<label for="${id}" style="font-size:11.5px; color:var(--text_main);">${escHtml(o.label)}</label>`;
+    const hint = o.hint ? `<div style="font-size:10px; color:var(--text_dim); line-height:1.45;">${escHtml(o.hint)}</div>` : '';
+    let control;
+    if (o.kind === 'bool') {
+        control = `<input type="checkbox" id="${id}" data-key="${o.key}" data-kind="bool" ${o.value ? 'checked' : ''}>`;
+        return `<div style="display:flex; flex-direction:column; gap:2px;">
+                  <div style="display:flex; align-items:center; gap:8px;">${control}${label}</div>${hint}</div>`;
+    }
+    if (o.kind === 'choice') {
+        const opts = o.choices.map(([v, t]) =>
+            `<option value="${v}"${Number(o.value) === Number(v) ? ' selected' : ''}>${escHtml(t)}</option>`).join('');
+        control = `<select id="${id}" data-key="${o.key}" data-kind="choice">${opts}</select>`;
+    } else if (o.kind === 'percent') {
+        // The file stores 0..32767; the dialog never mentions that, and the backend converts.
+        control = `<div style="display:flex; align-items:center; gap:8px;">
+              <input type="range" id="${id}" data-key="${o.key}" data-kind="percent" min="0" max="100" value="${o.value}" style="flex:1;">
+              <span data-for="${id}" style="font-size:11px; color:var(--text_sec); min-width:34px; text-align:right;">${o.value}%</span></div>`;
+    } else if (o.kind === 'float') {
+        control = `<div style="display:flex; align-items:center; gap:8px;">
+              <input type="range" id="${id}" data-key="${o.key}" data-kind="float" min="${o.min}" max="${o.max}" step="${o.step}" value="${o.value}" style="flex:1;">
+              <span data-for="${id}" style="font-size:11px; color:var(--text_sec); min-width:34px; text-align:right;">${Number(o.value).toFixed(2)}</span></div>`;
+    } else {
+        control = `<input type="number" id="${id}" data-key="${o.key}" data-kind="number" min="${o.min ?? 0}" max="${o.max ?? 99999}" value="${o.value}" style="width:110px;">`;
+    }
+    return `<div style="display:flex; flex-direction:column; gap:3px;">${label}${control}${hint}</div>`;
+}
+
+async function openFalloutCeSettings(game) {
+    const gid = game.InstallerGameId || '';
+    const res = await window.api.fceRead({ installerGameId: gid }).catch(() => null);
+    const modal = document.getElementById('modal-fce');
+    const body = document.getElementById('fce-body');
+    const status = document.getElementById('fce-status');
+    status.textContent = '';
+    if (!res || !res.ok) {
+        body.innerHTML = `<div style="font-size:12px; color:var(--text_sec);">${escHtml((res && res.error) || 'Could not read this game\'s settings.')}</div>`;
+        document.getElementById('fce-game-name').textContent = '';
+        document.getElementById('fce-linked-note').style.display = 'none';
+        modal.classList.add('active');
+        return;
+    }
+    _fceGame = { gid, title: res.title };
+    document.getElementById('fce-game-name').textContent = res.title;
+    document.getElementById('fce-subtitle').textContent = `${res.files.res} and ${res.files.cfg}, written in place. The port reads them at launch.`;
+
+    // Said out loud rather than done silently: these files are still shared with the Windows
+    // copy the data came from, and saving is what stops them being shared.
+    const note = document.getElementById('fce-linked-note');
+    if (res.linked.length) {
+        note.innerHTML = `<b>${res.linked.map(escHtml).join(' and ')}</b> ${res.linked.length > 1 ? 'are' : 'is'} still shared with the Windows copy this install borrowed its data from. Saving gives this port its own ${res.linked.length > 1 ? 'copies' : 'copy'} and leaves the original untouched.`;
+        note.style.display = '';
+    } else {
+        note.style.display = 'none';
+    }
+
+    body.innerHTML = res.groups.map(g => `
+        <div style="display:flex; flex-direction:column; gap:8px;">
+          <div style="font-size:10px; font-weight:900; letter-spacing:1.5px; text-transform:uppercase; color:var(--accent);">${escHtml(g.group)}</div>
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px 18px;">${g.options.map(_fceControl).join('')}</div>
+        </div>`).join('');
+
+    // Live readout for the sliders, so a number the file stores in engine units still reads
+    // as the thing the user is actually choosing.
+    body.querySelectorAll('input[type=range]').forEach(r => {
+        r.addEventListener('input', () => {
+            const out = body.querySelector(`[data-for="${r.id}"]`);
+            if (out) out.textContent = r.dataset.kind === 'percent' ? `${r.value}%` : Number(r.value).toFixed(2);
+        });
+    });
+    modal.classList.add('active');
+}
+
+document.getElementById('btn-fce-close')?.addEventListener('click', () =>
+    document.getElementById('modal-fce').classList.remove('active'));
+document.getElementById('modal-fce')?.addEventListener('click', e => {
+    if (e.target.id === 'modal-fce') e.currentTarget.classList.remove('active');
+});
+
+document.getElementById('btn-fce-save')?.addEventListener('click', async () => {
+    if (!_fceGame) return;
+    const status = document.getElementById('fce-status');
+    status.style.color = 'var(--text_sec)';
+    status.textContent = 'Saving…';
+    const patch = {};
+    document.querySelectorAll('#fce-body [data-key]').forEach(el => {
+        const k = el.dataset.key;
+        patch[k] = el.dataset.kind === 'bool' ? el.checked
+                 : el.dataset.kind === 'float' ? parseFloat(el.value)
+                 : parseInt(el.value, 10);
+    });
+    const r = await window.api.fceWrite({ installerGameId: _fceGame.gid, patch })
+                    .catch(e => ({ ok: false, error: String(e) }));
+    if (!r || !r.ok) { status.style.color = '#ff6b6b'; status.textContent = (r && r.error) || 'Could not save.'; return; }
+    status.style.color = '#66bb6a';
+    status.textContent = r.unlinked && r.unlinked.length
+        ? `Saved. ${r.unlinked.join(' and ')} now belong to this install.`
+        : `Saved ${r.written} setting${r.written === 1 ? '' : 's'}.`;
+    document.getElementById('fce-linked-note').style.display = 'none';
+});
+
 // ── DOS GAMES: which DOSBox runs them ──────────────────────────────────────
 // The status line is the whole point of the card: "Native" is only meaningful if a
 // native DOSBox is actually installed, so say plainly whether one is, and how to get it.
@@ -5827,8 +5938,18 @@ function openGamepage(game) {
 
     // Installer setup button, GOG and Epic games only
     const gpStore = (game.Store || '').toLowerCase();
-    if (gpStore.includes('gog') || gpStore.includes('epic')) {
+    // The Fallout CE ports are native and have no compatibility layer to configure, but they
+    // do have settings and no screen of their own to change them on, so the same button opens
+    // that instead. Checked first: a CE install's Store is "Others", so the storefront test
+    // below would hide the button entirely and there would be nowhere to put this.
+    const isFalloutCe = /^cn_fallout[12]-ce$/i.test(game.InstallerGameId || '');
+    if (isFalloutCe) {
         installerBtn.style.display = 'block';
+        installerBtn.title = 'Game settings';
+        installerBtn.onclick = () => openFalloutCeSettings(game);
+    } else if (gpStore.includes('gog') || gpStore.includes('epic')) {
+        installerBtn.style.display = 'block';
+        installerBtn.title = 'Compatibility settings';
         installerBtn.onclick = () => _openCompatFor(game);
     } else {
         installerBtn.style.display = 'none';
