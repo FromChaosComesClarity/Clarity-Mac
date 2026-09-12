@@ -121,11 +121,20 @@ function patchIni(file, section, values) {
     const eol = text.includes('\r\n') ? '\r\n' : '\n';
     const lines = text.split(/\r?\n/);
     const want = new Map(Object.entries(values));
-    let inSection = false, lastIndex = -1;
+    // ⚠️ headerIndex is tracked separately from lastIndex, and the difference is the whole
+    // point. lastIndex is the last NON-EMPTY line in the section, which is -1 for a section
+    // that exists but is empty, exactly what a freshly created file looks like. Treating -1
+    // as "the section is absent" appended a second [MAIN] below the first, and the file this
+    // produced had its keys under a duplicate header.
+    let inSection = false, lastIndex = -1, headerIndex = -1;
 
     for (let i = 0; i < lines.length; i++) {
         const head = /^\s*\[(.+?)\]\s*$/.exec(lines[i]);
-        if (head) { inSection = head[1].trim().toLowerCase() === section.toLowerCase(); continue; }
+        if (head) {
+            inSection = head[1].trim().toLowerCase() === section.toLowerCase();
+            if (inSection) headerIndex = i;
+            continue;
+        }
         if (!inSection) continue;
         if (lines[i].trim()) lastIndex = i;
         const kv = /^(\s*)([^=;#]+?)(\s*=\s*)(.*)$/.exec(lines[i]);
@@ -143,8 +152,9 @@ function patchIni(file, section, values) {
     // Anything the file never had: append inside the section if it exists, else create it.
     if (want.size) {
         const additions = [...want].map(([k, v]) => `${k}=${v}`);
-        if (lastIndex >= 0) lines.splice(lastIndex + 1, 0, ...additions);
-        else lines.push(`[${section}]`, ...additions);
+        if (lastIndex >= 0)        lines.splice(lastIndex + 1, 0, ...additions);   // after the last key
+        else if (headerIndex >= 0) lines.splice(headerIndex + 1, 0, ...additions); // section exists but is empty
+        else                       lines.push(`[${section}]`, ...additions);       // genuinely absent
     }
     try { fs.writeFileSync(file, lines.join(eol), 'utf8'); }
     catch (e) { return { ok: false, error: `${path.basename(file)} could not be written: ${e.message}` }; }
@@ -240,6 +250,23 @@ function writeSettings(installerGameId, installPath, patch) {
         }
     }
     if (!n) return { ok: true, written: 0, unlinked: [] };
+
+    // ⚠️ SCALE_2X doubles every pixel, which raises the MINIMUM resolution to 1280x960. Below
+    // that the port does not refuse and does not warn: it quietly falls back and renders a
+    // small box in the middle of the screen, which reads as "my settings were ignored" rather
+    // than "that combination is invalid". Checked against the merged result rather than the
+    // patch, because either half can arrive on its own: turning scaling on without touching
+    // the size is exactly how someone lands here.
+    const resNow = (readIni(f.res) || {}).MAIN || {};
+    const merged = k => (patch[k] !== undefined ? patch[k] : resNow[k]);
+    const scaled = merged('SCALE_2X');
+    if (scaled === true || String(scaled) === '1') {
+        const w = parseInt(merged('SCR_WIDTH'), 10)  || 0;
+        const h = parseInt(merged('SCR_HEIGHT'), 10) || 0;
+        if (w < 1280 || h < 960) {
+            return { ok: false, error: `Scale 2× needs at least 1280×960; this is ${w}×${h}. Raise the size or turn scaling off.` };
+        }
+    }
 
     // Break the symlinks BEFORE writing anything, so a failure halfway cannot leave one file
     // edited through to the Windows install and another not.
