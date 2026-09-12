@@ -36,7 +36,14 @@ const binDirName = 'darwin-arm64';
 // dev build cannot reliably write beside itself either, see Trap 1 in the handoff). Every
 // build, packaged or dev, keeps its data in the same per-user Library location.
 function portableBaseDir() {
-    return path.join(HOME, 'Library', 'Application Support', 'Clarity');
+    // Lowercase, because that is the directory the app actually creates: Electron derives
+    // userData from app.setName(), which is 'clarity' / 'clarity-couch' / 'clarity-installer'
+    // in the three faces, and package.json's name agrees. This one line said 'Clarity'.
+    // APFS is case-insensitive by default, so the two names resolve to one directory and the
+    // mismatch has never shown, but a case-SENSITIVE volume (a supported APFS format) would
+    // split the app's data in half: Electron's own state under clarity/, GameManagerConfig
+    // and InstallerConfig under Clarity/. Every other path in this file already agrees.
+    return path.join(HOME, 'Library', 'Application Support', 'clarity');
 }
 
 // There is no APPIMAGE equivalent. `process.execPath` is the real binary either way, inside
