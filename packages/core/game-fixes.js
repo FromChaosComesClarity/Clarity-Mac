@@ -126,8 +126,11 @@ const FIXES = [
 ];
 
 // Everything the suite knows how to fix, for the Control Panel and the manual.
+// ⚠️ Host-filtered on the same rule fixFor() applies. Without this the Control Panel told a
+// Linux user the suite knows how to fix two games it will never offer them a fix for, which
+// is worse than silence: it reads as a feature that is broken rather than absent.
 function listFixes() {
-    return FIXES.map(f => ({
+    return FIXES.filter(f => !f.platform || f.platform === process.platform).map(f => ({
         id: f.id, title: f.title, symptom: f.symptom, why: f.why,
         handledBy: f.handledBy || 'per-game fix',
     }));
