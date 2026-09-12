@@ -407,6 +407,72 @@ const RECIPES = [
     },
 
     // ── macOS ────────────────────────────────────────────────────────────────
+    {
+        id: 'gzdoom',
+        hosts: ['darwin'],
+        title: 'GZDoom',
+        kind: 'Source port',
+        game: 'Doom',
+        blurb: 'The Doom engine everything else is built on, and the one nearly every Doom mod expects. Native here, no translation layer.',
+        source: {
+            name: 'GitHub, ZDoom/gzdoom',
+            url: 'https://github.com/ZDoom/gzdoom/releases/latest',
+            hint: 'On the Releases page, download the macOS zip. It is named like gzdoom-4-14-2-macos.zip.',
+        },
+        // "macos" is required, not decorative: the Linux recipe shares this id and claims the
+        // Windows zip from the same release page.
+        archive: /gzdoom.*macos.*\.zip$/i,
+        samples: ['gzdoom-4-14-2-macos.zip'],
+        dirName: 'GZDoom',
+        // The zip holds GZDoom.app beside a Licenses folder, so flattenSingleRoot leaves it
+        // alone and the bundle is found where it sits. Checked against the real download.
+        entry: { exe: /^GZDoom\.app$/i, bundle: true, platform: 'osx' },
+        data: 'doom',
+    },
+    {
+        id: 'brutaldoom',
+        hosts: ['darwin'],
+        title: 'Brutal Doom',
+        kind: 'Mod',
+        game: 'Doom',
+        engine: ['gzdoom'],
+        blurb: 'The famous overhaul, reworked weapons, gore and enemy behaviour, on top of the original maps.',
+        source: {
+            name: 'ModDB, Brutal Doom',
+            url: 'https://www.moddb.com/mods/brutal-doom/downloads',
+            hint: 'Download the latest release; the file is named like brutalv22.zip, and a bare .pk3 works too.',
+        },
+        // The mod itself is platform-agnostic: a .pk3 is engine data, and the same download
+        // that works under Proton works on a native engine. Only the engine differs.
+        // Excludes Black Edition, whose download is also called Brutal_Doom_something.
+        archive: /^brutal(?!.*black).*\.(zip|7z|rar|pk3)$/i,
+        samples: ['brutalv22.zip', 'brutal22test6.zip', 'brutalv21.pk3'],
+        modFile: /\.(pk3|wad)$/i,
+        dirName: 'Brutal Doom',
+        iwad: /^doom2\.wad$/i,
+        data: 'doom',
+    },
+    {
+        id: 'brutaldoom-black',
+        hosts: ['darwin'],
+        title: 'Brutal Doom: Black Edition',
+        kind: 'Mod',
+        game: 'Doom',
+        engine: ['gzdoom'],
+        blurb: 'A darker, heavily reworked take on Brutal Doom, with its own lighting and effects.',
+        source: {
+            name: 'ModDB, Brutal Doom: Black Edition',
+            url: 'https://www.moddb.com/mods/brutal-doom/downloads/brutal-doom-v20b-black-edition',
+            hint: 'Download the latest release; the file is named like BDBE_v3.5.zip.',
+        },
+        archive: /^(bdbe|brutal.*black).*\.(zip|7z|rar|pk3)$/i,
+        samples: ['Brutal_Doom_Black_Edition.52.zip'],
+        modFile: /\.(pk3|wad)$/i,
+        dirName: 'Brutal Doom Black Edition',
+        iwad: /^doom2\.wad$/i,
+        data: 'doom',
+    },
+
     // The catalogue's first native entries, and they exist for a sharper reason than
     // "nicer to have". Fallout 1 and 2 under CrossOver stop dead at "Error initializing
     // video mode 1024x768", and the settings fix for that (see game-fixes.js) only gets
@@ -727,9 +793,23 @@ function selfCheck() {
         if (r.contains || r.generic || r.onEngine || r.folder) continue;   // no archive of their own
         if (!r.samples || !r.samples.length) { problems.push(`${r.id}: no samples to check`); continue; }
         for (const s of r.samples) {
-            const m = detectRecipe(s);
-            if (!m.includes(r.id))  problems.push(`${r.id}: its own sample "${s}" does not match its pattern`);
-            if (m.length > 1)       problems.push(`"${s}" matches several recipes: ${m.join(' + ')}`);
+            // ⚠️ Matched against this recipe's OWN hosts rather than through detectRecipe.
+            // detectRecipe is scoped to the running machine, so asking it about a Linux
+            // recipe from a Mac returns nothing and every Linux entry would be reported as
+            // broken. Checking per declared host instead keeps the whole catalogue verifiable
+            // from either machine, and scopes ambiguity correctly: two recipes may share a
+            // filename pattern as long as they are never offered on the same host, which is
+            // exactly how one engine exists as a Windows build and a native one.
+            const base = path.basename(s);
+            for (const host of r.hosts) {
+                const rivals = RECIPES.filter(o => (o.hosts || []).includes(host))
+                                      .filter(o => !o.contains && !o.generic && o.archive && o.archive.test(base))
+                                      .map(o => o.id);
+                if (!rivals.includes(r.id))
+                    problems.push(`${r.id}: its own sample "${s}" does not match its pattern`);
+                if (rivals.length > 1)
+                    problems.push(`"${s}" matches several recipes on ${host}: ${rivals.join(' + ')}`);
+            }
         }
     }
     return problems;
@@ -1043,7 +1123,15 @@ function archiveExtensions() {
     return [...out].sort();
 }
 
-function getRecipe(id) { return RECIPES.find(r => r.id === id) || null; }
+// An id can exist once per host: 'gzdoom' is the Windows build run through Proton on Linux
+// and a native .app on macOS. The host's own wins; the fallback exists only so a wrong-host
+// id still resolves far enough for installFromArchive to say "not offered on this system"
+// rather than the blunter "Unknown recipe".
+function getRecipe(id) {
+    return RECIPES.find(r => r.id === id && (r.hosts || []).includes(process.platform))
+        || RECIPES.find(r => r.id === id)
+        || null;
+}
 
 // Which recipe does this download belong to? Returned as a list because a user could
 // plausibly have a file that two recipes would both accept.
@@ -1052,7 +1140,13 @@ function getRecipe(id) { return RECIPES.find(r => r.id === id) || null; }
 // by content at install time instead.
 function detectRecipe(fileName) {
     const base = path.basename(String(fileName || ''));
-    return RECIPES.filter(r => !r.contains && !r.generic && r.archive && r.archive.test(base)).map(r => r.id);
+    // Host-filtered for the same reason listRecipes is, and now load-bearing rather than
+    // tidy: the same engine exists as two recipes sharing one id, one pointing at the Windows
+    // build for Proton and one at the native macOS build. Unfiltered, a download would match
+    // both and selfCheck would rightly call it ambiguous.
+    return RECIPES.filter(r => (r.hosts || []).includes(process.platform))
+                  .filter(r => !r.contains && !r.generic && r.archive && r.archive.test(base))
+                  .map(r => r.id);
 }
 
 // Find the user's own copy of the data a recipe needs.
@@ -1874,7 +1968,11 @@ function installGameOnEngine({ recipeId, archivePath, engineRoot, engineExe, eng
         launchArgs,
         installPath: target,
         executable: engineExe,
-        platform: 'windows',
+        // ⚠️ Derived, not assumed. This was hardcoded to 'windows', which was true while every
+        // engine in the catalogue was a Windows build run through a translation layer. A
+        // native macOS engine is a .app, and registering one as a Windows game sends it to
+        // CrossOver, which cannot run a bundle at all. The engine's own shape is the answer.
+        platform: /\.app$/i.test(String(engineExe || '')) ? 'osx' : 'windows',
         dataFrom: { path: data.path, title: data.title, linked: linked.linked },
         extraFrom: extra ? extra.title : null,
         shadowed,
@@ -2046,8 +2144,14 @@ function installMod({ recipeId, archivePath, engineRoot, engineExe, dataRows, se
     const chosen = iwad !== undefined
         ? iwad
         : (recipe.iwad ? (iwads.find(i => recipe.iwad.test(i.file))?.file || '') : '');
-    if (chosen) args.push('-iwad', chosen);
-    for (const f of picked) args.push('-file', path.relative(engineRoot, f));
+    // ⚠️ Relative paths only resolve if the engine runs with engineRoot as its working
+    // directory. That is true of a bare executable and NEVER true of a macOS .app: a bundle
+    // is launched through `open`, which gives it no such cwd, and GZDoom then reports
+    // "Cannot find a game IWAD" about files sitting directly beside it. Absolute for a
+    // bundle, relative otherwise, so no existing install changes shape.
+    const bundleEngine = /\.app$/i.test(String(engineExe || ''));
+    if (chosen) args.push('-iwad', bundleEngine ? path.join(engineRoot, chosen) : chosen);
+    for (const f of picked) args.push('-file', bundleEngine ? f : path.relative(engineRoot, f));
 
     return {
         ok: true,
@@ -2056,7 +2160,11 @@ function installMod({ recipeId, archivePath, engineRoot, engineExe, dataRows, se
         title: recipe.title,
         installPath: engineRoot,
         executable: engineExe,
-        platform: 'windows',
+        // ⚠️ Derived, not assumed. This was hardcoded to 'windows', which was true while every
+        // engine in the catalogue was a Windows build run through a translation layer. A
+        // native macOS engine is a .app, and registering one as a Windows game sends it to
+        // CrossOver, which cannot run a bundle at all. The engine's own shape is the answer.
+        platform: /\.app$/i.test(String(engineExe || '')) ? 'osx' : 'windows',
         launchArgs: args.map(a => (/\s/.test(a) ? `"${a}"` : a)).join(' '),
         modFiles: picked.map(f => path.basename(f)),
         iwad: chosen,
