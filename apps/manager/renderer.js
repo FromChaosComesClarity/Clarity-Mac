@@ -2152,13 +2152,18 @@ async function openFalloutCeSettings(game) {
 
     // Said out loud rather than done silently: these files are still shared with the Windows
     // copy the data came from, and saving is what stops them being shared.
+    // Three things can be worth saying, and more than one can be true at once, so they are
+    // collected rather than chosen between.
     const note = document.getElementById('fce-linked-note');
-    if (res.linked.length) {
-        note.innerHTML = `<b>${res.linked.map(escHtml).join(' and ')}</b> ${res.linked.length > 1 ? 'are' : 'is'} still shared with the Windows copy this install borrowed its data from. Saving gives this port its own ${res.linked.length > 1 ? 'copies' : 'copy'} and leaves the original untouched.`;
-        note.style.display = '';
-    } else {
-        note.style.display = 'none';
-    }
+    const notes = [];
+    if (res.linked.length)
+        notes.push(`<b>${res.linked.map(escHtml).join(' and ')}</b> ${res.linked.length > 1 ? 'are' : 'is'} still shared with the Windows copy this install borrowed its data from. Saving gives this port its own ${res.linked.length > 1 ? 'copies' : 'copy'} and leaves the original untouched.`);
+    if (res.willCreate)
+        notes.push(`<b>${escHtml(res.willCreate)}</b> does not exist yet, so the values below are this port's documented defaults. Saving creates it.`);
+    if (res.cfgNote)
+        notes.push(escHtml(res.cfgNote));
+    note.innerHTML = notes.map(n => `<div>${n}</div>`).join('<div style="height:6px"></div>');
+    note.style.display = notes.length ? '' : 'none';
 
     body.innerHTML = res.groups.map(g => `
         <div style="display:flex; flex-direction:column; gap:8px;">
@@ -2199,10 +2204,17 @@ document.getElementById('btn-fce-save')?.addEventListener('click', async () => {
                     .catch(e => ({ ok: false, error: String(e) }));
     if (!r || !r.ok) { status.style.color = '#ff6b6b'; status.textContent = (r && r.error) || 'Could not save.'; return; }
     status.style.color = '#66bb6a';
-    status.textContent = r.unlinked && r.unlinked.length
-        ? `Saved. ${r.unlinked.join(' and ')} now belong to this install.`
+    const became = [...(r.created || []), ...(r.unlinked || [])];
+    const msg = became.length
+        ? `Saved. ${became.join(' and ')} now belong to this install.`
         : `Saved ${r.written} setting${r.written === 1 ? '' : 's'}.`;
-    document.getElementById('fce-linked-note').style.display = 'none';
+    // Re-read rather than blanking the notice: the shared-file warning is now stale, but a
+    // missing fallout cfg is still missing and saying otherwise would be a lie.
+    // ⚠️ The message is set AFTER the refresh, not before: reopening clears the status line,
+    // so setting it first would show "Saved" for a few milliseconds and then nothing.
+    await openFalloutCeSettings({ InstallerGameId: _fceGame.gid, Game: _fceGame.title });
+    status.style.color = '#66bb6a';
+    status.textContent = msg;
 });
 
 // ── DOS GAMES: which DOSBox runs them ──────────────────────────────────────

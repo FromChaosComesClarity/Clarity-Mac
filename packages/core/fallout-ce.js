@@ -151,6 +151,19 @@ function patchIni(file, section, values) {
     return { ok: true };
 }
 
+// A fresh GOG install ships NEITHER config file: the engine writes them on first exit, which
+// is why a copy that has been played has them and a newly downloaded one does not. That is a
+// bad first experience for a settings dialog, so the two files are treated differently:
+//
+//   • the res file is ours to create. It is small, its whole content is the port's own
+//     display settings, and the CE README documents the three keys that matter. Seeded with
+//     the port's documented defaults so the dialog works on a never-launched install.
+//   • the cfg is NOT ours to invent. It carries master_dat, critter_patches, music paths and
+//     a hundred engine settings, and a half-written one is worse than none: the engine would
+//     read our partial file instead of falling back to its own defaults. So when it is
+//     absent the dialog simply offers fewer groups and says why.
+const DEFAULT_RES = { SCR_WIDTH: '1280', SCR_HEIGHT: '720', WINDOWED: '1', SCALE_2X: '0' };
+
 // ── Public API ───────────────────────────────────────────────────────────────
 
 function filesFor(installerGameId, installPath) {
@@ -166,8 +179,15 @@ function readSettings(installerGameId, installPath) {
     if (!f) return { ok: false, error: 'Not a Fallout Community Edition install.' };
 
     const parsed = { res: readIni(f.res), cfg: readIni(f.cfg) };
-    const missing = ['res', 'cfg'].filter(k => !parsed[k]).map(k => path.basename(f[k]));
-    if (missing.length) return { ok: false, error: `Missing config: ${missing.join(', ')}. Launch the game once, or reinstall it.` };
+
+    // Absent res file: offer the documented defaults and create it on save.
+    let willCreate = null;
+    if (!parsed.res) { parsed.res = { MAIN: { ...DEFAULT_RES } }; willCreate = path.basename(f.res); }
+
+    // Absent cfg: its groups are dropped below (no section to read), and the dialog explains
+    // rather than pretending those settings do not exist.
+    const cfgMissing = !parsed.cfg;
+    if (cfgMissing) parsed.cfg = {};
 
     const linked = ['res', 'cfg'].filter(k => { try { return fs.lstatSync(f[k]).isSymbolicLink(); } catch { return false; } })
                                  .map(k => path.basename(f[k]));
@@ -189,7 +209,12 @@ function readSettings(installerGameId, installPath) {
     })).filter(g => g.options.length);
 
     return { ok: true, title: f.variant.title, id: f.variant.id, groups,
-             files: { res: path.basename(f.res), cfg: path.basename(f.cfg) }, linked };
+             files: { res: path.basename(f.res), cfg: path.basename(f.cfg) }, linked,
+             willCreate,
+             cfgMissing,
+             cfgNote: cfgMissing
+                 ? `${path.basename(f.cfg)} does not exist yet. The engine writes it the first time the game exits, and the audio, gameplay and performance settings will appear here once it has.`
+                 : '' };
 }
 
 // `patch` is a flat { key: value } in the dialog's own units; converted back here so the
@@ -219,9 +244,17 @@ function writeSettings(installerGameId, installPath, patch) {
     // Break the symlinks BEFORE writing anything, so a failure halfway cannot leave one file
     // edited through to the Windows install and another not.
     const unlinked = [];
+    const created = [];
     for (const slot of Object.keys(bySection)) {
         const which = slot.split('|')[0];
         if (materialise(f[which])) unlinked.push(path.basename(f[which]));
+        if (!fs.existsSync(f[which])) {
+            // Only ever the res file: writeSettings is never handed cfg keys when the cfg is
+            // absent, because readSettings offered no controls for them.
+            if (which !== 'res') return { ok: false, error: `${path.basename(f[which])} does not exist yet. Launch the game once and it will be created.` };
+            try { fs.writeFileSync(f.res, '[MAIN]\n', 'utf8'); created.push(path.basename(f.res)); }
+            catch (e) { return { ok: false, error: `Could not create ${path.basename(f.res)}: ${e.message}` }; }
+        }
     }
 
     for (const [slot, values] of Object.entries(bySection)) {
@@ -229,7 +262,7 @@ function writeSettings(installerGameId, installPath, patch) {
         const r = patchIni(f[which], section, values);
         if (!r.ok) return r;
     }
-    return { ok: true, written: n, unlinked: [...new Set(unlinked)] };
+    return { ok: true, written: n, unlinked: [...new Set(unlinked)], created };
 }
 
 module.exports = { VARIANTS, SCHEMA, variantFor, filesFor, readSettings, writeSettings, readIni, patchIni };
