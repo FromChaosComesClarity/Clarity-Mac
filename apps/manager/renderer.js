@@ -96,6 +96,30 @@ function _steamMenuOutside(e) {
     if (e.target.closest('#steam-menu') || e.target.closest('#btn-gamepage-steam')) return;
     _closeSteamMenu();
 }
+// A steam:// URL that refers to a game the user HAS must reach the client that actually has
+// it. On macOS a bottled game lives in the Windows Steam inside the CrossOver bottle, so
+// handing steam://validate or steam://gameproperties to the OS opens MAC Steam, which has
+// never heard of that install and quietly does nothing at all, which is the worst possible
+// failure: the button appears to work.
+//
+// The store page is the deliberate exception. It is the same page in either client and
+// browsing it does not depend on owning a local copy, so it keeps going wherever the OS
+// sends it rather than dragging a bottle up to show a shop.
+const _STEAM_URL_NEEDS_OWNING_CLIENT =
+    /^steam:\/\/(?:uninstall|validate|gameproperties|nav\/games\/details|rungameid|run)\//i;
+
+// Asks where the game actually is rather than inferring it: steamBottleAppState answers from
+// Steam's own manifests, and returns found:false on every host without a bottle, so this is
+// the previous behaviour everywhere it was already right.
+async function _openSteamUrl(url, appId) {
+    let preferBottle = false;
+    if (appId && _STEAM_URL_NEEDS_OWNING_CLIENT.test(url)) {
+        const st = await window.api.steamBottleAppState?.(appId).catch(() => null);
+        preferBottle = !!(st && st.found);
+    }
+    return window.api.openInstallUrl(url, { preferBottle });
+}
+
 function openSteamMenu(anchorBtn, appId) {
     _closeSteamMenu();
     const items = [
@@ -117,7 +141,7 @@ function openSteamMenu(anchorBtn, appId) {
     menu.addEventListener('click', (e) => {
         const b = e.target.closest('.steam-menu-item');
         if (!b) return;
-        window.api.openExternal(b.dataset.url);
+        _openSteamUrl(b.dataset.url, appId);
         _closeSteamMenu();
     });
     setTimeout(() => document.addEventListener('click', _steamMenuOutside, true), 0);
@@ -5841,7 +5865,7 @@ function openGamepage(game) {
             uninstallBtn.title = 'Uninstall via Steam';
             uninstallBtn.onclick = async () => {
                 const ok = await showConfirm(`Uninstall "${game.Game}" through Steam?\nSteam will open and ask you to confirm.`, 'Uninstall', true);
-                if (ok) window.api.openExternal(`steam://uninstall/${sAppId}`);
+                if (ok) _openSteamUrl(`steam://uninstall/${sAppId}`, sAppId);
             };
         } else {
             uninstallBtn.style.display = 'none';
