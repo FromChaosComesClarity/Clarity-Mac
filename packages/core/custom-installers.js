@@ -405,6 +405,58 @@ const RECIPES = [
         data: null,
         category: 'OpenBOR',
     },
+
+    // ── macOS ────────────────────────────────────────────────────────────────
+    // The catalogue's first native entries, and they exist for a sharper reason than
+    // "nicer to have". Fallout 1 and 2 under CrossOver stop dead at "Error initializing
+    // video mode 1024x768", and the settings fix for that (see game-fixes.js) only gets
+    // them STARTED: measured on a real install, the intro is painfully slow, and it is
+    // just as slow with the High Resolution Patch removed entirely and the resolution
+    // back at the original 640x480. So the sluggishness is the DirectDraw path itself and
+    // no configuration reaches it. A native build does, by not being there at all.
+    //
+    // Unlike every Linux entry above, there is no compatibility layer in this story:
+    // these are universal binaries that run on Apple Silicon directly.
+    {
+        id: 'fallout1-ce',
+        hosts: ['darwin'],
+        title: 'Fallout Community Edition',
+        kind: 'Source port',
+        game: 'Fallout',
+        blurb: 'The 1997 Fallout rebuilt to run natively, no translation layer, using your own copy of the game data.',
+        source: {
+            name: 'GitHub, alexbatalov/fallout1-ce',
+            url: 'https://github.com/alexbatalov/fallout1-ce/releases/latest',
+            hint: 'On the Releases page, download the macOS disk image. It is named fallout-ce-macos.dmg.',
+        },
+        // Anchored, so this cannot also claim fallout2-ce-macos.dmg.
+        archive: /^fallout-ce-macos.*\.dmg$/i,
+        samples: ['fallout-ce-macos.dmg'],
+        dirName: 'Fallout Community Edition',
+        // ⚠️ The bundle's real name, read out of the actual disk image. The project's own
+        // README still says to copy "fallout-ce.app", which no release has shipped for some
+        // time; trusting it would have produced "no matching executable was found inside".
+        entry: { exe: /^Fallout Community Edition\.app$/i, bundle: true, platform: 'osx' },
+        data: 'fallout1',
+    },
+    {
+        id: 'fallout2-ce',
+        hosts: ['darwin'],
+        title: 'Fallout II Community Edition',
+        kind: 'Source port',
+        game: 'Fallout 2',
+        blurb: 'Fallout 2 rebuilt to run natively, no translation layer, using your own copy of the game data.',
+        source: {
+            name: 'GitHub, alexbatalov/fallout2-ce',
+            url: 'https://github.com/alexbatalov/fallout2-ce/releases/latest',
+            hint: 'On the Releases page, download the macOS disk image. It is named fallout2-ce-macos.dmg.',
+        },
+        archive: /^fallout2-ce-macos.*\.dmg$/i,
+        samples: ['fallout2-ce-macos.dmg'],
+        dirName: 'Fallout II Community Edition',
+        entry: { exe: /^Fallout II Community Edition\.app$/i, bundle: true, platform: 'osx' },
+        data: 'fallout2',
+    },
 ];
 
 // ── Game data the ports need ─────────────────────────────────────────────────
@@ -494,6 +546,36 @@ const DATA_SPECS = {
         exclude: [/powerslave exhumed|exhumed \(2022\)/i,
                   /forever|manhattan|blood west|blood omen|bloodstained|bloodlines|shadow warrior \(?20(13|16)|shadow warrior [23]/i],
         owned: 'You own a Build engine game but it is not installed. Install it first and this will find the data automatically.',
+    },
+
+    // Fallout keeps everything in master.dat, critter.dat and a data/ folder, all at the
+    // install root, so the whole folder is the data set and mirroring it wholesale is both
+    // simpler and safer than naming files that move between releases.
+    //
+    // ⚠️ dataDir is matched on the FOLDER NAME and confirmed by probing for master.dat,
+    // and both halves are load-bearing: every Fallout game ever sold is called "Fallout
+    // something", and only these two have a master.dat.
+    //
+    // The lowercasing mirrorTree already does is not incidental here either: the ports ask
+    // for lowercase names, and a GOG or Steam install ships MASTER.DAT and CRITTER.DAT.
+    // That costs nothing on a case-insensitive volume and is the difference between
+    // working and not on a case-sensitive one.
+    fallout1: {
+        label: 'Fallout (the 1997 release)',
+        dataDir: /^fallout$/i,
+        mainFile: /^master\.dat$/i,
+        titles: [/^fallout$/i, /^fallout 1$/i],
+        // Everything else wearing the name, including Fallout 2, whose own spec is below.
+        exclude: [/fallout ?2|tactics|brotherhood of steel|new vegas|shelter|fallout ?[34]|fallout ?76/i],
+        owned: 'You own Fallout but it is not installed. Install it first and this will find the data automatically.',
+    },
+    fallout2: {
+        label: 'Fallout 2 (the 1998 release)',
+        dataDir: /^fallout ?(2|ii)$/i,
+        mainFile: /^master\.dat$/i,
+        titles: [/^fallout ?(2|ii)$/i],
+        exclude: [/tactics|brotherhood of steel|new vegas|shelter|fallout ?[34]|fallout ?76/i],
+        owned: 'You own Fallout 2 but it is not installed. Install it first and this will find the data automatically.',
     },
 };
 
@@ -704,6 +786,41 @@ const INSTALLER_JUNK_PATH = /(^|\/)\$(PLUGINSDIR|TEMP)\//i;
 // fails on NSIS-2 with E_NOTIMPL partway through, it stumbles over the installer's own
 // script and scratch entries, but extracting the payload by name succeeds cleanly. So:
 // list, drop the plumbing, take the rest.
+// macOS projects ship releases as .dmg, which no archive tool unpacks: it is a filesystem
+// image that has to be mounted. hdiutil is part of macOS so nothing needs installing, but
+// the volume MUST be detached even when the copy fails, or it stays mounted until the user
+// notices or reboots. Hence the finally.
+function extractDiskImage(imgPath, target) {
+    const attach = spawnSync('hdiutil', ['attach', '-nobrowse', '-readonly', '-plist', imgPath],
+                             { encoding: 'utf8', maxBuffer: 8 * 1024 * 1024 });
+    if (attach.status !== 0) {
+        return { ok: false, error: `Could not mount that disk image: ${(attach.stderr || '').trim().slice(0, 200)}` };
+    }
+    // -plist rather than the human-readable table, whose columns shift depending on whether
+    // the image carries a partition map.
+    const mounts = [...String(attach.stdout || '')
+        .matchAll(/<key>mount-point<\/key>\s*<string>([^<]+)<\/string>/g)].map(m => m[1]);
+    if (!mounts.length) return { ok: false, error: 'That disk image mounted but exposed no volume.' };
+    const vol = mounts[0];
+    try {
+        let copied = 0;
+        for (const e of fs.readdirSync(vol, { withFileTypes: true })) {
+            // Volume bookkeeping, and the drag-to-install alias to /Applications most of
+            // these images carry: copying that would follow it out of the image entirely.
+            if (e.name.startsWith('.')) continue;
+            if (e.isSymbolicLink() && /^applications$/i.test(e.name)) continue;
+            fs.cpSync(path.join(vol, e.name), path.join(target, e.name), { recursive: true });
+            copied++;
+        }
+        if (!copied) return { ok: false, error: 'That disk image held nothing to install.' };
+    } catch (e) {
+        return { ok: false, error: `Could not copy out of that disk image: ${e.message}` };
+    } finally {
+        spawnSync('hdiutil', ['detach', '-quiet', vol]);
+    }
+    return { ok: true };
+}
+
 function extractInstaller(archivePath, target) {
     const sevenZip = which('7z') || which('7za') || which('7zz');
     if (!sevenZip) return { ok: false, error: 'Unpacking a Windows installer needs 7z (p7zip).' };
@@ -773,6 +890,11 @@ function flattenSingleRoot(dir) {
     let entries;
     try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch { return; }
     if (entries.length !== 1 || !entries[0].isDirectory()) return;
+    // ⚠️ A macOS .app IS a directory, but it is the payload rather than a wrapper folder
+    // around it. Flattening one moves Contents/ up and quietly destroys the bundle: what is
+    // left has no Info.plist at its root and cannot be launched, and the entry search then
+    // reports "no matching executable was found inside" about an app that unpacked perfectly.
+    if (/\.app$/i.test(entries[0].name)) return;
     const inner = path.join(dir, entries[0].name);
     for (const name of fs.readdirSync(inner)) {
         fs.renameSync(path.join(inner, name), path.join(dir, name));
@@ -858,12 +980,16 @@ function findEntryBesideDir(root, dirPattern, exePattern, maxDepth = 3) {
     return walk(root, 0);
 }
 
-function findEntry(root, pattern, maxDepth = 3) {
+function findEntry(root, pattern, maxDepth = 3, { bundles = false } = {}) {
     const walk = (dir, depth) => {
         let entries = [];
         try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch { return ''; }
         for (const e of entries) {
             if (e.isFile() && pattern.test(e.name)) return path.join(dir, e.name);
+            // A macOS application is a DIRECTORY. Matched here, before the walk descends, so
+            // the answer is the bundle itself and never the raw Mach-O inside Contents/MacOS,
+            // which must not be launched on its own.
+            if (bundles && e.isDirectory() && pattern.test(e.name)) return path.join(dir, e.name);
         }
         if (depth >= maxDepth) return '';
         for (const e of entries) {
@@ -878,8 +1004,13 @@ function findEntry(root, pattern, maxDepth = 3) {
 
 // ── Public API ───────────────────────────────────────────────────────────────
 
+// ⚠️ Filtered by host, which selfCheck has always insisted every recipe declares but which
+// nothing actually enforced: every entry was offered everywhere. Invisible while the
+// catalogue was Linux-only and uniform, and not invisible the moment a native macOS entry
+// exists, because "download the Windows build and run it through Proton" and "download the
+// native .dmg" are not interchangeable advice.
 function listRecipes() {
-    return RECIPES.map(r => ({
+    return RECIPES.filter(r => (r.hosts || []).includes(process.platform)).map(r => ({
         id: r.id, title: r.title, kind: r.kind, game: r.game, blurb: r.blurb,
         source: r.source, dirName: r.dirName, dynamic: !!r.dynamic, generic: !!r.generic,
         // needsArchive must travel with onEngine: an engine-based recipe normally has
@@ -1281,6 +1412,11 @@ function installFromArchive({ recipeId, archivePath, installRoot, dataRows, data
     installRoot = resolveRoot(installRoot);   // never create a literal "~" directory
     const recipe = getRecipe(recipeId);
     if (!recipe) return { ok: false, error: `Unknown recipe "${recipeId}".` };
+    // listRecipes() already hides these, so reaching here means a stale window or a caller
+    // that built its own id. Refuse rather than unpack a port meant for another host.
+    if (!(recipe.hosts || []).includes(process.platform)) {
+        return { ok: false, error: `${recipe.title} is not offered on this system.` };
+    }
     if (!archivePath || !fs.existsSync(archivePath)) return { ok: false, error: 'That file no longer exists.' };
 
     if (!recipe.archive.test(path.basename(archivePath))) {
@@ -1326,7 +1462,10 @@ function installFromArchive({ recipeId, archivePath, installRoot, dataRows, data
     }
     fs.mkdirSync(target, { recursive: true });
 
-    if (path.extname(archivePath).toLowerCase() === '.exe') {
+    if (path.extname(archivePath).toLowerCase() === '.dmg') {
+        const got = extractDiskImage(archivePath, target);
+        if (!got.ok) return got;
+    } else if (path.extname(archivePath).toLowerCase() === '.exe') {
         const got = extractInstaller(archivePath, target);
         if (!got.ok) return got;
     } else {
@@ -1343,7 +1482,8 @@ function installFromArchive({ recipeId, archivePath, installRoot, dataRows, data
 
     // Nothing runnable yet, but an archive inside, an installer carrying its payload as a
     // second archive. Unwrap once and look again.
-    if (!recipe.contains && !findEntry(target, recipe.entry.exe) && unwrapNestedArchive(target)) {
+    const bundles = { bundles: !!recipe.entry.bundle };
+    if (!recipe.contains && !findEntry(target, recipe.entry.exe, 3, bundles) && unwrapNestedArchive(target)) {
         dropInstallerJunk(target);
         flattenSingleRoot(target);
     }
@@ -1352,7 +1492,7 @@ function installFromArchive({ recipeId, archivePath, installRoot, dataRows, data
     // OpenBOR engine is renamed per game, so the only reliable rule is "the exe that sits
     // beside Paks/". A name-matching search would just pick the first .exe it tripped over.
     const exe = recipe.contains ? findEntryBesideDir(target, /^Paks$/i, recipe.entry.exe)
-                                : findEntry(target, recipe.entry.exe);
+                                : findEntry(target, recipe.entry.exe, 3, bundles);
     if (!exe) {
         return { ok: false, error: recipe.contains
             ? 'Unpacked, but no game executable was found next to the Paks folder.'
@@ -1601,6 +1741,11 @@ function installGameOnEngine({ recipeId, archivePath, engineRoot, engineExe, eng
     installRoot = resolveRoot(installRoot);   // never create a literal "~" directory
     const recipe = getRecipe(recipeId);
     if (!recipe) return { ok: false, error: `Unknown recipe "${recipeId}".` };
+    // listRecipes() already hides these, so reaching here means a stale window or a caller
+    // that built its own id. Refuse rather than unpack a port meant for another host.
+    if (!(recipe.hosts || []).includes(process.platform)) {
+        return { ok: false, error: `${recipe.title} is not offered on this system.` };
+    }
     if (!engineRoot || !fs.existsSync(engineRoot)) return { ok: false, error: 'The engine folder is missing, reinstall it.' };
 
     // Data before anything is created: a game folder with no game in it is worse than a
