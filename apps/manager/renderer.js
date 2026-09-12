@@ -4556,6 +4556,7 @@ function loadGames() {
                     currentPlaylistGames = await window.api.getPlaylistGames(currentPlaylistId);
                 }
                 applyFilters();
+                try { _paintBatchScope(); } catch {}   // counts move whenever the library does
             } catch (e) { console.error('[loadGames]', e); }
             finally { resolvers.forEach(r => { try { r(); } catch {} }); }
         }, 80);
@@ -7698,8 +7699,59 @@ async function runBatchScrape(gamesToFetch, label) {
     loadGames();
 }
 
-// Standalone button: scrape every game missing data
-document.getElementById('btn-batch-fetch').addEventListener('click', () => runBatchScrape(gamesMissingData(allGames), 'Batch Scrape'));
+// ── Batch scrape: which games are even considered ────────────────────────────
+// Two separate questions, and only the first one is new here.
+//   1. WHICH games, all of them or only what is installed. That is this scope picker. A
+//      library of a few hundred owned-but-not-installed titles made "scrape what's missing"
+//      a very long job to reach the handful you can actually play right now.
+//   2. Which of those need anything. That is gamesMissingData(), which already skipped every
+//      row that has all five images and all five text fields, and is unchanged.
+let _batchScope = 'all';
+
+function _batchScopeList() {
+    // `== 1` rather than truthiness, matching how Installed is compared everywhere else in
+    // this file: it arrives from SQLite as a number but survives CSV import as a string.
+    return _batchScope === 'installed' ? allGames.filter(g => g.Installed == 1) : allGames;
+}
+
+// The skip in (2) was invisible. "Batch Scrape Missing Data" said nothing about how many rows
+// it was going to pass over, so a run that correctly did almost nothing was indistinguishable
+// from a run that failed. Say the number before it starts.
+function _paintBatchScope() {
+    const ctl = document.getElementById('batch-scope-control');
+    if (!ctl) return;
+    ctl.querySelectorAll('.batch-scope-btn')
+       .forEach(b => b.classList.toggle('active', b.dataset.val === _batchScope));
+    const hint = document.getElementById('batch-scope-hint');
+    if (!hint) return;
+    const inScope = _batchScopeList();
+    const need    = gamesMissingData(inScope).length;
+    const noun    = (_batchScope === 'installed' ? 'installed game' : 'game') + (inScope.length === 1 ? '' : 's');
+    hint.innerText =
+        !inScope.length ? (_batchScope === 'installed' ? 'No installed games.' : 'No games in the library yet.')
+      : need === 0      ? `All ${inScope.length} ${noun} already ${inScope.length === 1 ? 'has' : 'have'} data and art.`
+      :                   `${need} of ${inScope.length} ${noun} missing something; the rest are skipped.`;
+}
+
+document.querySelectorAll('.batch-scope-btn').forEach(btn =>
+    btn.addEventListener('click', () => {
+        _batchScope = btn.dataset.val;
+        _paintBatchScope();
+        window.api.setSetting('batch_scrape_scope', _batchScope);
+    }));
+
+(async () => {
+    try {
+        const saved = await window.api.getSetting('batch_scrape_scope');
+        if (saved === 'all' || saved === 'installed') _batchScope = saved;
+    } catch {}
+    _paintBatchScope();
+})();
+
+// Standalone button: scrape every game in scope that is missing data
+document.getElementById('btn-batch-fetch').addEventListener('click', () => runBatchScrape(
+    gamesMissingData(_batchScopeList()),
+    _batchScope === 'installed' ? 'Batch Scrape · installed only' : 'Batch Scrape'));
 
 document.getElementById('btn-check-install').addEventListener('click', async () => {
     const btn = document.getElementById('btn-check-install');
