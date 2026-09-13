@@ -1,7 +1,8 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('api', {
-  getBaseDir: () => ipcRenderer.invoke('get-basedir'),
+  platform: process.platform,
+                                getBaseDir: () => ipcRenderer.invoke('get-basedir'),
                                 getGames: () => ipcRenderer.invoke('get-games'),
                                 genreList: () => ipcRenderer.invoke('genre-list'),
                                 setGameGenres: (id, slugs) => ipcRenderer.invoke('set-game-genres', id, slugs),
@@ -31,6 +32,7 @@ contextBridge.exposeInMainWorld('api', {
                                 verifyInstallStatus: (id) => ipcRenderer.invoke('verify-install-status', id),
                                 launcherStates: (id) => ipcRenderer.invoke('launcher-states', id),
                                 openInstallUrl: (url, opts) => ipcRenderer.invoke('open-install-url', url, opts),
+                                macNativeForGame: (id) => ipcRenderer.invoke('mac-native-for-game', id),
                                 onInstallStatusUpdated: (cb) => ipcRenderer.on('install-status-updated', () => cb()),
                                 onGameLaunchFailed: (cb) => ipcRenderer.on('game-launch-failed', (e, d) => cb(d)),
                                 onGameLaunchProgress: (cb) => ipcRenderer.on('game-launch-progress', (e, d) => cb(d)),

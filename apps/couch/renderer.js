@@ -1730,12 +1730,59 @@ function handleOSKInput(action) {
 }
 
 // Steam installs go through the desktop Steam client, warn before leaving the couch UI.
+//
+// On macOS there are two desktop Steam clients, not one: the Mac app, and the Windows client
+// living in the CrossOver bottle. Sending a Windows-only title to the Mac app is not a
+// near-miss, it opens a store page and refuses with "Invalid Platform", so the routing matters
+// here as much as it does in the Manager and follows the same two rules:
+//   Windows-only   nothing to ask, go straight to the bottled client.
+//   Both builds    a real choice, so it becomes two actions instead of one.
 let _steamInstallGame = null;
-function showSteamInstallConfirm(game) {
+async function showSteamInstallConfirm(game) {
   _steamInstallGame = game;
   if (['START', 'HOME', 'MAIN', 'GALLERY', 'GALLERY_GAMEPAGE', 'Couch_FGP'].includes(gameState)) previousGameState = gameState;
   gameState = 'OVERLAY'; currentOverlayType = 'STEAM_INSTALL_CONFIRM'; setBlur(true); playSound(sfxSelect);
-  renderGenericOverlay('INSTALL VIA STEAM', ['§Steam will open on your desktop to install this game.', 'CONTINUE, OPEN STEAM', t('common.close_menu')]);
+
+  const mac = window.api.platform === 'darwin';
+  if (!mac) {
+    renderGenericOverlay('INSTALL VIA STEAM', [
+      '§Steam will open on your desktop to install this game.',
+      'CONTINUE, OPEN STEAM',
+      t('common.close_menu'),
+    ]);
+    return;
+  }
+
+  // ⚠️ MacNative defaults to 0 whether or not anyone has ever checked, so it cannot be read as
+  // "Windows only" on its own. Same resolution the Manager does: ask about this one game, once,
+  // and treat a failed lookup as unknown rather than as a no.
+  let native = game && game.MacNative == 1;
+  let unsure = false;
+  if (!native && game) {
+    const r = await window.api.macNativeForGame(game.id).catch(() => null);
+    if (r && r.ok) { native = !!r.macNative; game.MacNative = native ? 1 : 0; }
+    else unsure = true;
+  }
+  // The overlay is re-rendered here rather than earlier because the lookup is a network call:
+  // the "opening" state is already on screen while it runs.
+  if (currentOverlayType !== 'STEAM_INSTALL_CONFIRM' || _steamInstallGame !== game) return;  // closed while waiting
+
+  if (native || unsure) {
+    renderGenericOverlay('INSTALL VIA STEAM', [
+      unsure
+        ? '§Steam could not be reached to say which builds this game ships. Pick one, and if it does not exist Steam will say so and install nothing.'
+        : '§This game ships a macOS build and a Windows one. Native runs at full speed; the Windows build goes through CrossOver, and is usually the better-patched one. Steam opens on your desktop either way.',
+      'INSTALL THE MAC BUILD',
+      'INSTALL THE WINDOWS BUILD',
+      t('common.close_menu'),
+    ]);
+    return;
+  }
+  renderGenericOverlay('INSTALL VIA STEAM', [
+    '§This game is Windows only, so it installs through the Steam inside your CrossOver bottle. That Steam will open on your desktop.',
+    'CONTINUE, OPEN STEAM',
+    t('common.close_menu'),
+  ]);
 }
 
 // Gallery sort (ported from the Manager's sort dropdown; same six modes).
@@ -2097,10 +2144,15 @@ function executeOverlayAction() {
   }
 
   if (currentOverlayType === 'STEAM_INSTALL_CONFIRM') {
-    if (action === 'CONTINUE, OPEN STEAM') {
+    // preferBottle stays undefined for anything but macOS; the backend answers "no bottle
+    // here" and the URL goes to the OS handler exactly as it always did.
+    const BOTTLE = { 'CONTINUE, OPEN STEAM': window.api.platform === 'darwin',
+                     'INSTALL THE MAC BUILD': false,
+                     'INSTALL THE WINDOWS BUILD': true };
+    if (action in BOTTLE) {
       const g = _steamInstallGame;
       const appid = g && g.SteamAppID ? String(g.SteamAppID).replace(/\.0+$/, '') : '';
-      if (appid) window.api.openInstallUrl('steam://install/' + appid);
+      if (appid) window.api.openInstallUrl('steam://install/' + appid, { preferBottle: BOTTLE[action] });
     }
     _steamInstallGame = null;
     closeOverlay();
