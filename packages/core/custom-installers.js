@@ -425,6 +425,42 @@ const RECIPES = [
         data: null,
     },
     {
+        id: 'ecwolf',
+        hosts: ['darwin'],
+        title: 'ECWolf',
+        kind: 'Source port',
+        game: 'Wolfenstein 3D',
+        blurb: 'Wolfenstein 3D and Spear of Destiny on a modern engine: mouselook, widescreen and high resolutions, with the original feel kept. Native here.',
+        source: {
+            name: 'GitHub, MacSourcePorts/ECWolf',
+            url: 'https://github.com/MacSourcePorts/ECWolf/releases/latest',
+            hint: 'On the Releases page, download the disk image. It is named like ECWolf-1.3.99999.dmg.',
+        },
+        archive: /^ecwolf.*\.dmg$/i,
+        samples: ['ECWolf-1.3.99999.dmg'],
+        dirName: 'ECWolf',
+        entry: { exe: /^ECWolf\.app$/i, bundle: true, platform: 'osx' },
+        data: 'wolf3d',
+    },
+    {
+        id: 'eduke32',
+        hosts: ['darwin'],
+        title: 'EDuke32',
+        kind: 'Source port',
+        game: 'Duke Nukem 3D',
+        blurb: 'Duke Nukem 3D on the long-running EDuke32 engine: high resolutions, mouselook and decades of fixes. Native here.',
+        source: {
+            name: 'GitHub, MacSourcePorts/eduke32',
+            url: 'https://github.com/MacSourcePorts/eduke32/releases/latest',
+            hint: 'On the Releases page, download the disk image. It is named like EDuke32-2.0.dmg.',
+        },
+        archive: /^eduke32.*\.dmg$/i,
+        samples: ['EDuke32-2.0.dmg'],
+        dirName: 'EDuke32',
+        entry: { exe: /^EDuke32\.app$/i, bundle: true, platform: 'osx' },
+        data: 'duke3d',
+    },
+    {
         id: 'vkquake',
         hosts: ['darwin'],
         title: 'vkQuake',
@@ -681,7 +717,10 @@ const DATA_SPECS = {
     // release takes the complete set and there is no list of filenames to get wrong.
     wolf3d: {
         label: 'Wolfenstein 3D or Spear of Destiny',
-        files: [{ find: /\.(wl6|wl1|sod|sd[123])$/i, into: '' }],
+        // .sdm and .n3d are not guesses: ECWolf names the full set it accepts when it cannot
+        // find one, "(*.wl6, *.wl1, *.sdm, *.sod, *.n3d)". The shareware Spear demo and Super
+        // 3D Noah's Ark were missing from this list.
+        files: [{ find: /\.(wl6|wl1|sod|sdm|n3d|sd[123])$/i, into: '' }],
         requireAny: true,
         titles: [/wolfenstein\s*3-?d/i, /spear of destiny/i],
         // The modern shooters share the name and have nothing to do with this.

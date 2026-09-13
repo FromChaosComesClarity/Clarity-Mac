@@ -1584,8 +1584,18 @@ async function handleInstall(game) {
         if (/^(gog|epic)_/i.test(game.InstallerGameId || '')) { openInstallerInstall(game); return; }
         _openCompatFor(game); return;
     }
+    // ⚠️ Routed through _installSteamGame rather than opening the URL here. This was a bare
+    // openInstallUrl(installCmd) with no options, so preferBottle was never set and a
+    // Windows-only title went to MAC Steam, which refuses it with "Invalid Platform". The
+    // bottled-Steam routing added in 5513ec2 only ever covered the launcher picker; every
+    // other install button in the app arrives HERE, which is why it looked fixed and was not.
     const installCmd = getInstallCommand(game);
-    if (installCmd) { window.api.openInstallUrl(installCmd); return; }
+    if (installCmd) {
+        const appId = _steamAppId(game);
+        if (appId) { _installSteamGame(game, appId); return; }
+        window.api.openInstallUrl(installCmd);
+        return;
+    }
     if (isManualCategory(game)) openAddCmdDialog(game.id, game.Game);
 }
 
