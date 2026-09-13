@@ -830,17 +830,79 @@ function showLauncherPicker(game, states, mode = 'launch') {
 // installs one without it. On macOS that raises a question the other hosts never face: MAC
 // Steam cannot install a Windows-only title, it just opens a store page and declines, so the
 // request has to go to the Windows client living in the CrossOver bottle instead. MacNative
-// is what decides, and the backend answers "no bottle here" for everything else, so this is
-// the old behaviour everywhere except the one case it was wrong in.
+// is what decides whether there is even a choice to offer, and the backend answers "no bottle
+// here" for everything else, so this is the old behaviour on every host but this one.
 //
 // ⚠️ Steam owns the confirmation dialog and there is no way to suppress it. So this cannot
 // report "installing" the moment it returns, only "handed to Steam"; what it CAN do is watch
 // the manifest Steam maintains and report honestly from there.
 const _steamInstallsWatched = new Set();
 
+// Which Steam gets the install request on macOS. Two cases, and only one of them is a
+// question:
+//   Windows-only     there is nothing to ask, Mac Steam cannot install it at all, so the
+//                    request goes straight to the bottled Windows client.
+//   Both builds      a real choice with real consequences either way, so the user makes it.
+//                    Native runs at full speed with no translation layer but is whatever
+//                    build the publisher bothered to ship, often older and sometimes missing
+//                    multiplayer; the Windows build is the one that gets the patches and the
+//                    mods, at the cost of going through CrossOver.
+// Resolves to true for the bottle, false for Mac Steam, or null if the user backed out, which
+// must install nothing rather than falling through to a default.
+async function _steamPreferBottle(game) {
+    if (window.api.platform !== 'darwin') return false;   // other hosts have one Steam
+
+    // ⚠️ game.MacNative alone cannot answer this. It defaults to 0 and the scan that fills it
+    // in is opt-in, so on an unscanned library every game reads as Windows-only and the choice
+    // below would never be offered at all. Ask about this one game when it has not been asked;
+    // the answer is cached, so it costs one lookup per game, once, and nothing afterwards.
+    let native = game.MacNative == 1;
+    let unsure = false;
+    if (!native) {
+        const r = await window.api.macNativeForGame(game.id).catch(() => null);
+        if (r && r.ok) {
+            native = !!r.macNative;
+            game.MacNative = native ? 1 : 0;             // keep the open list in step
+        } else {
+            // A lookup that failed is not a "no". Steam being unreachable must not quietly
+            // demote a game that has a native build into the bottle, so ask instead of
+            // guessing, saying plainly that this is a question rather than a fact.
+            unsure = true;
+        }
+    }
+    if (!native && !unsure) return true;                  // Windows-only, no question to ask
+
+    const chosen = await pickRunOptions({
+        title: `Install ${game.Game || 'this game'}`,
+        okLabel: 'Install',
+        radios: {
+            header: 'Which build?',
+            hint: unsure
+                ? 'Steam could not be reached to say which builds this game ships, so pick one. If the native build does not exist, Steam will say so and nothing is installed.'
+                : 'This game ships both. The native build runs directly on macOS; the Windows build runs through CrossOver in your Steam bottle. You can install the other one later.',
+            items: [
+                {
+                    value: 'mac',
+                    label: 'macOS native',
+                    sub: 'Full speed, no translation layer. Installs through the Steam app you already run.',
+                },
+                {
+                    value: 'windows',
+                    label: 'Windows, through CrossOver',
+                    sub: 'Usually the better-patched build, and the one mods target. Installs through the Steam inside your CrossOver bottle.',
+                },
+            ],
+            current: unsure ? 'windows' : 'mac',
+        },
+    });
+    if (!chosen || !chosen.choice) return null;
+    return chosen.choice === 'windows';
+}
+
 async function _installSteamGame(game, appId) {
-    const winOnly = window.api.platform === 'darwin' && game.MacNative != 1;
-    const r = await window.api.openInstallUrl('steam://install/' + appId, { preferBottle: winOnly })
+    const preferBottle = await _steamPreferBottle(game);
+    if (preferBottle === null) return;   // cancelled
+    const r = await window.api.openInstallUrl('steam://install/' + appId, { preferBottle })
                     .catch(() => null) || {};
     if (r.routed !== 'bottle') return;   // the OS handler has it; its own Steam shows progress
     _watchSteamBottleInstall(game, appId);

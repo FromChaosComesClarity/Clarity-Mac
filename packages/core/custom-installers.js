@@ -457,8 +457,15 @@ const RECIPES = [
         archive: /^eduke32.*\.dmg$/i,
         samples: ['EDuke32-2.0.dmg'],
         dirName: 'EDuke32',
-        entry: { exe: /^EDuke32\.app$/i, bundle: true, platform: 'osx' },
-        data: 'duke3d',
+        // EDuke32 is told the FOLDER holding the GRP with -j, its "add to search path" flag.
+        // Verified: launched without it the Setup dialog's Game list is empty; with it the
+        // list shows "Duke Nukem 3D: Atomic Edition (WT)  duke3d.grp".
+        entry: { exe: /^EDuke32\.app$/i, bundle: true, platform: 'osx', basedirArg: '-j' },
+        // ⚠️ 'build-duke3d', not 'duke3d'. The Build games are declared compactly in
+        // BUILD_GAMES and expanded into DATA_SPECS under a 'build-' prefix, so the bare name
+        // is the table key and not the spec id. Using it produced
+        // 'Unknown data requirement "duke3d"' at install time.
+        data: 'build-duke3d',
     },
     {
         id: 'vkquake',

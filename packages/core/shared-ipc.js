@@ -126,6 +126,41 @@ function registerSharedHandlers(ctx) {
             ? host.steamBottleAppState(appId)
             : { found: false, installed: false, percent: 0, bytesDownloaded: 0, bytesToDownload: 0 });
 
+    // One game, answered now. The full scan above is opt-in and may simply never have been run,
+    // and MacNative defaults to 0, so "no native build" and "nobody has ever asked" are the same
+    // value in the row. That distinction is invisible everywhere else but decides a real fork at
+    // install time on macOS: treating unasked as Windows-only would send a game that HAS a native
+    // build straight into the bottle without ever offering the choice. MacNativeChecked is what
+    // separates them, so this asks Steam for the one appId when it is still 0 and caches the
+    // answer the same way the scan does.
+    //
+    // Returns { ok, macNative, checked } and, when the lookup itself fails, ok:false rather than a
+    // confident 0: an unreachable store is not a game without a Mac build.
+    ipcMain.handle('mac-native-for-game', async (_e, gameId) => {
+        if (host.id !== 'darwin') return { ok: true, macNative: false, checked: true };
+        if (!db) return { ok: false, error: 'Library not ready.' };
+        let row;
+        try { row = db.prepare("SELECT id, SteamAppID, MacNative, MacNativeChecked FROM games WHERE id=?").get(gameId); } catch {}
+        if (!row) return { ok: false, error: 'No such game.' };
+        if (row.MacNativeChecked == 1) return { ok: true, macNative: row.MacNative == 1, checked: true };
+
+        const appId = String(row.SteamAppID || '').replace(/\.0+$/, '').trim();
+        if (!appId || appId === 'None') return { ok: false, error: 'Not a Steam game.' };
+        try {
+            const res = await fetch(`https://store.steampowered.com/api/appdetails?appids=${appId}&filters=platforms`);
+            const j = await res.json();
+            const platforms = j?.[appId]?.data?.platforms;
+            // A success body with no platforms block is a refusal (region lock, delisted), not a
+            // "no". Only a real platforms object is worth caching.
+            if (!platforms) return { ok: false, error: 'Steam did not answer for that game.' };
+            const isMac = !!platforms.mac;
+            db.prepare("UPDATE games SET MacNative=?, MacNativeChecked=1 WHERE id=?").run(isMac ? 1 : 0, row.id);
+            return { ok: true, macNative: isMac, checked: true };
+        } catch (e) {
+            return { ok: false, error: e.message };
+        }
+    });
+
     // ── The Omarchy theme ────────────────────────────────────────────────────
     // Shared rather than Manager-only, and that is a correctness matter, not tidiness:
     // Couch mirrors the Manager's theme by name when themeSource is MANAGER, resolving it
