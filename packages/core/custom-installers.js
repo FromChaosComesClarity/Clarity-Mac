@@ -19,6 +19,7 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 const { spawnSync } = require('child_process');
+const host = require('./platform/index.js');
 
 // ── The catalogue ────────────────────────────────────────────────────────────
 // `archive` matches the file the user drops on us, so a mis-dropped download is caught
@@ -439,7 +440,15 @@ const RECIPES = [
         archive: /^ecwolf.*\.dmg$/i,
         samples: ['ECWolf-1.3.99999.dmg'],
         dirName: 'ECWolf',
-        entry: { exe: /^ECWolf\.app$/i, bundle: true, platform: 'osx' },
+        // ⚠️ needsCwd, and it is not optional. ECWolf looks for its game data in the working
+        // directory, the directory holding the binary, and ~/Library/Application Support/ECWolf,
+        // and nowhere else: there is no flag to point it at a folder the way -j and -basedir do.
+        // A .app launched through `open` has no working directory at all, so it came up, printed
+        // "Can not find base game data" and quit, with nothing on screen to say why. Verified
+        // both ways against a real install. The other two places it would look are a signed
+        // third-party bundle and a user-global folder, neither of which an install should write
+        // into, so the working directory is the one right answer.
+        entry: { exe: /^ECWolf\.app$/i, bundle: true, platform: 'osx', needsCwd: true },
         data: 'wolf3d',
     },
     {
@@ -1795,6 +1804,14 @@ function installFromArchive({ recipeId, archivePath, installRoot, dataRows, data
         }
     }
 
+    // An engine that needs a working directory cannot be started through `open`, which throws
+    // one away. Recording the binary inside the bundle instead of the bundle itself is what
+    // makes the difference: launchNative spawns a plain executable directly, and the launcher
+    // already passes cwd = the install folder, which is exactly where the data was linked.
+    const entryExe = recipe.entry.needsCwd && typeof host.appExecutable === 'function'
+        ? host.appExecutable(exe)
+        : exe;
+
     return {
         ok: true,
         recipeId: recipe.id,
@@ -1802,7 +1819,7 @@ function installFromArchive({ recipeId, archivePath, installRoot, dataRows, data
         category: recipe.category || '',
         title,
         installPath: target,
-        executable: path.relative(target, exe) || path.basename(exe),
+        executable: path.relative(target, entryExe) || path.basename(entryExe),
         platform: recipe.entry.platform,
         launchArgs,
         dataFrom: data && data.ok ? { path: data.path, title: data.title, linked: linked.linked } : null,
