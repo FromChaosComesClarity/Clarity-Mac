@@ -425,6 +425,29 @@ const RECIPES = [
         data: null,
     },
     {
+        id: 'vkquake',
+        hosts: ['darwin'],
+        title: 'vkQuake',
+        kind: 'Source port',
+        game: 'Quake',
+        blurb: 'Quake on a Vulkan renderer, high frame rates and modern resolutions with the original look intact. Native here, no translation layer.',
+        source: {
+            // ⚠️ MacSourcePorts, not the upstream project. Novum/vkQuake publishes Windows and
+            // Linux builds only; there is no macOS asset on its releases page at all, so this
+            // is the source rather than a convenience mirror.
+            name: 'GitHub, MacSourcePorts/vkQuake',
+            url: 'https://github.com/MacSourcePorts/vkQuake/releases/latest',
+            hint: 'On the Releases page, download the disk image. It is named like vkQuake-1.12.2.dmg.',
+        },
+        archive: /^vkquake.*\.dmg$/i,
+        samples: ['vkQuake-1.12.2.dmg'],
+        dirName: 'vkQuake',
+        // A Quake engine is told the FOLDER holding id1, not a file: it finds the paks, the
+        // mission packs and the soundtrack from there itself.
+        entry: { exe: /^vkQuake\.app$/i, bundle: true, platform: 'osx', basedirArg: '-basedir' },
+        data: 'quake',
+    },
+    {
         id: 'gzdoom',
         hosts: ['darwin'],
         title: 'GZDoom',
@@ -1711,11 +1734,19 @@ function installFromArchive({ recipeId, archivePath, installRoot, dataRows, data
     let launchArgs = null;
     if (recipe.entry.bundle && linked && Array.isArray(linked.linked) && linked.linked.length) {
         const beside = path.dirname(exe);
+        // Two shapes of answer, because engines differ in what they need told. A Doom engine
+        // wants one FILE (-iwad doom2.wad); a Quake engine wants the DIRECTORY its id1 sits
+        // in (-basedir …), and works out the rest itself. A recipe says which by naming the
+        // flag; without one, the Doom shape is assumed, as it was before.
+        if (recipe.entry.basedirArg) {
+            launchArgs = `${recipe.entry.basedirArg} "${beside}"`;
+        } else {
         const wads = linked.linked.filter(n => /\.(wad|pk3)$/i.test(n));
         const pick = (recipe.iwad && wads.find(w => recipe.iwad.test(w)))
                   || wads.find(w => /^doom2\.wad$/i.test(w))
                   || wads[0];
         if (pick) launchArgs = `-iwad "${path.join(beside, pick)}"`;
+        }
     }
 
     return {
