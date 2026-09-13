@@ -527,25 +527,40 @@ const dosbox = { find: findDosbox, installHint: dosboxInstallHint, translateArgs
 const PICO8_BINARIES = ['pico8', 'pico8_dyn', 'pico8_64'];
 const PICO8_BUNDLE   = 'PICO-8.app';
 
-// CFBundleExecutable rather than an assumed filename. It is in fact "pico8" in the shipping
-// build (checked against a real PICO-8.app), but the bundle declares its own entry point and
-// there is no reason to guess at something that is written down.
-function appExecutable(p) {
-    if (!p || !/\.app$/i.test(p)) return p;
-    let name = 'pico8';
-    try {
-        const declared = execSync(`defaults read "${path.join(p, 'Contents', 'Info')}" CFBundleExecutable`,
-            { stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim();
-        if (declared) name = declared;
-    } catch {}
-    const exe = path.join(p, 'Contents', 'MacOS', name);
-    return fs.existsSync(exe) ? exe : p;
-}
-
 // isFile(), not existsSync(): the whole point here is that a directory can masquerade as a
 // present executable, so "it exists" is not the question worth asking.
 function isRunnableFile(p) {
     try { return !!p && fs.statSync(p).isFile(); } catch { return false; }
+}
+
+// The real binary inside a .app, from CFBundleExecutable rather than an assumed filename. It
+// is in fact "pico8" in the shipping PICO-8 build (checked against a real PICO-8.app), but the
+// bundle declares its own entry point and there is no reason to guess at something that is
+// written down. Returns the path unchanged when it is not a bundle, or when nothing inside it
+// can be resolved, so callers can pass anything.
+//
+// The fallbacks matter for third-party bundles: ECWolf.app declares "ecwolf", lowercase, which
+// neither the bundle name nor any guess would have produced. If Info.plist cannot be read at
+// all, the last resort is the single file in Contents/MacOS, which is what these ports ship.
+function appExecutable(p) {
+    if (!p || !/\.app$/i.test(p)) return p;
+    const macOS = path.join(p, 'Contents', 'MacOS');
+    const names = [];
+    try {
+        const declared = execSync(`defaults read "${path.join(p, 'Contents', 'Info')}" CFBundleExecutable`,
+            { stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim();
+        if (declared) names.push(declared);
+    } catch {}
+    names.push(path.basename(p).replace(/\.app$/i, ''));
+    for (const name of names) {
+        const exe = path.join(macOS, name);
+        if (isRunnableFile(exe)) return exe;
+    }
+    try {
+        const files = fs.readdirSync(macOS, { withFileTypes: true }).filter(e => e.isFile());
+        if (files.length === 1) return path.join(macOS, files[0].name);
+    } catch {}
+    return p;
 }
 
 function findPico8(configured, pico8Dir) {
@@ -921,7 +936,7 @@ module.exports = {
     steamBottleForApp, steamBottleLaunch, parseSteamBottleCommand,
     steamBottleUrl, steamBottleAppState,
     nativeOsKey, gogdlPlatform, legendaryPlatform,
-    launchNative, findNativeGameExe, findNativeInstallResult,
+    launchNative, findNativeGameExe, findNativeInstallResult, appExecutable,
     dosbox,
     pico8,
     runtime,
