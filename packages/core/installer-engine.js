@@ -27,6 +27,10 @@ const os   = require('os');
 const { spawn } = require('child_process');
 const Database = require('better-sqlite3');
 const host = require('./platform/index.js');
+// Fixes for individual games. Required here rather than left to an implicit global: without
+// this, every reference below throws ReferenceError, and the try/catch that guards the fixes
+// swallows it as "per-game fix skipped", so none of them have ever run.
+const gameFixes = require('./game-fixes.js');
 
 // ── Injected context (set by init) ────────────────────────────────────────────
 let configDir, prefixesDir, logDir, binDir, appImageDir, HOME, db, _onProgress, _onLaunchIssue, _onLaunchProgress, _onGameSession;
@@ -1127,6 +1131,17 @@ async function launchGame(gameId, opts = {}) {
         catch (e) { console.error('[launch] Fallout: London fix failed:', e.message); }
     }
 
+    // Per-game fix (see applyWineDesktop). Before the spawn, because the game reads the
+    // desktop setting as it starts, and never a reason a launch fails: a game that would
+    // have run without it must still get its chance.
+    try {
+        const desktop = gameFixes.desktopFor(resolvedExe);
+        if (desktop) {
+            const wrote = await applyWineDesktop(desktop, resolvedExe, prefix, proton);
+            if (wrote) console.log(`[launch] ${desktop.title}: running in a ${desktop.size} Wine desktop, this host cannot give it the display mode it asks for`);
+        }
+    } catch (e) { console.error('[launch] Wine desktop fix failed:', e.message); }
+
     // Awaited so a host whose runtime needs a real async step before it can launch anything
     // (CrossOver: creating the game's bottle, first time only) isn't forced into blocking the
     // whole process synchronously to do it. A no-op for Linux, whose buildLaunch is plain sync.
@@ -1286,6 +1301,82 @@ async function injectGogRegistry(game, prefix, proton) {
         const proc = spawn(reg.cmd, reg.args, { env: reg.env, stdio: 'ignore' });
         proc.on('close', () => { try { fs.unlinkSync(regFile); } catch {} resolve(); });
         proc.on('error', () => { try { fs.unlinkSync(regFile); } catch {} resolve(); });
+    });
+}
+
+// ── Per-game fix: a Wine virtual desktop for a game that mode-switches ────────
+//
+// Some pre-2005 games ask the display for a mode the host cannot provide and quit rather
+// than run without it. Arcanum wants 800x600 at 16bpp, and macOS has no 16-bit modes to
+// give it. Inside a Wine virtual desktop the mode becomes Wine's to emulate rather than the
+// display's to provide, and the game gets what it asked for. Which games, and why, is in
+// packages/core/game-fixes.js; this only writes what that file decided.
+//
+// ⚠️ Scoped to the one executable, through Wine's AppDefaults, not to the whole prefix. A
+// bare HKCU\Software\Wine\Explorer "Desktop" would also put every tool, installer and
+// config utility ever run in this prefix inside a desktop window.
+//
+// ⚠️ Written once, then left alone, for the same reason game-fixes.js leaves a settings key
+// alone: after the first launch this is the player's, and someone who turned the desktop off
+// or resized it meant to. The presence of the AppDefaults block is the whole test, so a
+// prefix rebuilt from scratch is re-seeded and one that is merely edited is not.
+//
+// That test reads user.reg, which is cheap enough to run on every launch but can lag the
+// live registry while a wineserver is up (see regQueryCommand). It errs the harmless way:
+// a stale "not set" repeats an identical write, it never reports a desktop that is not
+// there. The confirmation after the write is the one that has to be exact, and it asks the
+// running registry instead.
+function wineDesktopAlreadySet(prefix, exeName) {
+    let reg;
+    try { reg = fs.readFileSync(path.join(prefix, 'user.reg'), 'utf8'); }
+    catch { return false; }            // no prefix yet, or no user.reg: nothing to preserve
+    // Section headers in user.reg carry doubled backslashes, so the line to find is
+    // literally  [Software\\Wine\\AppDefaults\\Arcanum.exe\\Explorer]  . Matched as a string
+    // rather than a pattern: an executable name is not a regex, and ".exe" as a wildcard is
+    // exactly the kind of near-miss that would make this silently answer "already set".
+    const header = `[Software\\\\Wine\\\\AppDefaults\\\\${exeName}\\\\Explorer]`;
+    return reg.toLowerCase().includes(header.toLowerCase());
+}
+
+async function applyWineDesktop(desktop, resolvedExe, prefix, proton) {
+    const exeName = path.basename(resolvedExe);
+    if (wineDesktopAlreadySet(prefix, exeName)) return false;
+
+    const regContent =
+        'Windows Registry Editor Version 5.00\r\n\r\n' +
+        `[HKEY_CURRENT_USER\\Software\\Wine\\AppDefaults\\${exeName}\\Explorer]\r\n` +
+        `"Desktop"="${desktop.name}"\r\n\r\n` +
+        `[HKEY_CURRENT_USER\\Software\\Wine\\Explorer\\Desktops]\r\n` +
+        `"${desktop.name}"="${desktop.size}"\r\n`;
+
+    const regFile = path.join(os.tmpdir(), `wine_desktop_${desktop.fix}.reg`);
+    fs.writeFileSync(regFile, regContent, 'utf8');
+
+    const reg = await host.runtime.regeditCommand({ prefix, runtimePath: proton, regFile });
+    await new Promise(resolve => {
+        const proc = spawn(reg.cmd, reg.args, { env: reg.env, stdio: 'ignore' });
+        proc.on('close', resolve);
+        proc.on('error', resolve);
+    });
+    try { fs.unlinkSync(regFile); } catch {}
+
+    // Positive confirmation, not "regedit exited": regedit /S is silent on failure too, and a
+    // desktop that was not actually written is exactly the invisible failure this fix exists
+    // to remove. Asked of the live registry rather than of user.reg, which lags it.
+    const query = await host.runtime.regQueryCommand({
+        prefix, runtimePath: proton,
+        key: `HKCU\\Software\\Wine\\AppDefaults\\${exeName}\\Explorer`,
+        valueName: 'Desktop',
+    });
+    return await new Promise(resolve => {
+        let out = '';
+        const proc = spawn(query.cmd, query.args, { env: query.env, stdio: ['ignore', 'pipe', 'ignore'] });
+        proc.stdout.on('data', d => { out += d; });
+        // `reg query` exits 1 when the value is absent, so the code alone would do. The value
+        // is checked too, because a desktop pointing at some other name is not this fix having
+        // worked, and would leave the game in a window nobody asked for.
+        proc.on('close', code => resolve(code === 0 && out.includes(desktop.name)));
+        proc.on('error', () => resolve(false));
     });
 }
 

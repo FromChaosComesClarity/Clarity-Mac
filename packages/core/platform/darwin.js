@@ -874,6 +874,24 @@ async function regeditCommand({ prefix, runtimePath, regFile }) {
     };
 }
 
+// Read one value back out of the prefix's LIVE registry. user.reg on disk is not that: the
+// registry lives in the wineserver, which flushes to the file on its own schedule, so a read
+// of user.reg straight after a write can still show the old state. Measured, not reasoned
+// about: with a wineserver already up for the prefix, a write through regeditCommand was
+// invisible in user.reg immediately afterwards, while the game started by that same server
+// could see it perfectly well. `reg query` goes through the same door the write did, and
+// exits 0 when the value is there and 1 when it is not.
+async function regQueryCommand({ prefix, runtimePath, key, valueName }) {
+    const wine = usableRuntimePath(runtimePath);
+    if (!wine) throw unavailableError();
+    const { bottleDir, bottleName } = await ensureBottle(prefix, wine);
+    return {
+        cmd: wine,
+        args: ['--bottle', bottleName, '--no-gui', 'reg', 'query', key, '/v', valueName],
+        env: { ...process.env, CX_BOTTLE_PATH: bottleDir },
+    };
+}
+
 // z: maps to / exactly like Linux/vanilla Wine, confirmed against a real bottle's
 // dosdevices/ (CrossOver additionally maps y: to $HOME, unused here).
 function toWindowsPath(p) { return ('Z:' + p).replace(/\//g, '\\'); }
@@ -909,7 +927,7 @@ const runtime = {
     resolve: resolveRuntime,
     isRuntimeDir,
     inUse, canRun, assertAvailable,
-    compatEnv, buildLaunch, buildRedistLaunch, regeditCommand,
+    compatEnv, buildLaunch, buildRedistLaunch, regeditCommand, regQueryCommand,
     toWindowsPath, diagnose, unavailableError,
     // Not wired up, CrossOver 26 advertises its own BattlEye/EAC support built
     // into the engine itself, unverified here against a real anti-cheat title, and

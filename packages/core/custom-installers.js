@@ -631,6 +631,38 @@ const RECIPES = [
         data: null,
     },
     {
+        id: 'arcanum-ce',
+        hosts: ['darwin'],
+        title: 'Arcanum Community Edition',
+        kind: 'Source port',
+        game: 'Arcanum: Of Steamworks and Magick Obscura',
+        blurb: 'The 2001 Arcanum rebuilt to run natively, using your own copy of the game data. No translation layer, and none of the 16-bit DirectDraw trouble the Windows build has under CrossOver.',
+        // ⚠️ Points at a fork, and deliberately. Upstream (alexbatalov/arcanum-ce) tags no
+        // releases at all and its CI artifacts expire after seven days, so it has no URL that
+        // is still valid by the time anyone reads this. The fork runs upstream's own CI and
+        // publishes the result somewhere durable. It also carries three community pull
+        // requests upstream has not merged, two of which decide whether this is playable on a
+        // Mac: movies do not play without #158, and NPC replies sit on top of the player's
+        // dialogue options without #157.
+        //
+        // ⚠️ arcanum-ce is under the Sustainable Use License, which is NOT open source:
+        // non-commercial use, and redistribution only free of charge. This recipe DOWNLOADS
+        // it and Clarity never bundles it, which is what keeps that licence clear of
+        // Clarity's own GPL-3.0. Do not be tempted to ship the binary inside the app.
+        source: {
+            name: 'GitHub, FromChaosComesClarity/arcanum-ce',
+            url: 'https://github.com/FromChaosComesClarity/arcanum-ce/releases/latest',
+            hint: 'On the Releases page, download the macOS disk image. It is named arcanum-ce-macos.dmg.',
+        },
+        archive: /^arcanum-ce-macos.*\.dmg$/i,
+        samples: ['arcanum-ce-macos.dmg'],
+        dirName: 'Arcanum Community Edition',
+        // The bundle's real name, read out of the actual disk image rather than from the
+        // README, which still describes copying a differently named file.
+        entry: { exe: /^Arcanum Community Edition\.app$/i, bundle: true, platform: 'osx' },
+        data: 'arcanum',
+    },
+    {
         id: 'fallout1-ce',
         hosts: ['darwin'],
         title: 'Fallout Community Edition',
@@ -678,6 +710,36 @@ const RECIPES = [
 // makes this safe: a library row can be named anything, but only a genuine Quake install
 // has id1/pak0.pak in it.
 const DATA_SPECS = {
+    arcanum: {
+        label: 'Arcanum: Of Steamworks and Magick Obscura',
+        // All five or nothing. arcanum-ce reads every one of them, and an install missing any
+        // single .dat starts and dies without a word, so the gap is reported by name before
+        // anything is unpacked rather than discovered on first launch.
+        requireAllOf: ['arcanum1.dat', 'arcanum2.dat', 'arcanum3.dat', 'arcanum4.dat', 'tig.dat'],
+        files: [
+            { find: /^arcanum[1-4]\.dat$/i },
+            { find: /^tig\.dat$/i },
+        ],
+        // modules/ is a tree, not a flat folder: Arcanum.dat and Vormantown.dat sit at its
+        // top, and Arcanum/ below holds the movies and the music the port plays from disk.
+        // `tree` mirrors the directories for real and links only the files, so the port's own
+        // saves go into its own install and never back into the Windows game's.
+        //
+        // ⚠️ maps/ and Save/ are skipped deliberately. Neither ships with the game: the 2001
+        // Windows build writes them on its own runs (as does data/proto/, which is what the
+        // bundled RemoveProtos.exe exists to clear away). Linking one game's saved state into
+        // another's install is how two ports end up fighting over one save folder.
+        dirs: [{ name: 'modules', probe: /^Arcanum\.dat$/i, required: true,
+                 tree: true, skip: /^(maps|Save)$/i }],
+        titles: [/^arcanum\b/i],
+        // ⚠️ Excludes this recipe's own output. A finished Community Edition install is called
+        // "Arcanum Community Edition", matches /^arcanum\b/ perfectly, and holds symlinks to
+        // the very .dat files being looked for, so it satisfies every probe. Without this, a
+        // second install resolves its data from the first one and every file it links is a
+        // symlink to a symlink, which survives exactly until someone deletes the earlier copy.
+        exclude: [/community edition/i],
+        owned: 'You own Arcanum but it is not installed. Install it first and this will find the data automatically.',
+    },
     quake: {
         label: 'Quake (the original 1996 release)',
         // Ports look for lowercase names; GOG ships Id1/PAK0.PAK. Resolution is
@@ -1430,6 +1492,29 @@ function mirrorTree(src, dst, copy) {
 // Does this folder actually hold the data a spec needs? The same test whether the folder
 // came from the library or the user pointed at it, a shelf of DOS files they still have
 // is every bit as valid a source as a storefront install, and quite often the only one.
+// Real directories, symlinked files, all the way down. mirrorTree above goes one level and
+// symlinks whole directories, which is right for a game whose data IS a directory. It is
+// wrong for a game whose data is a nested tree the port then writes into: symlink modules/
+// and the port's saves land inside the Windows game's install instead of its own. Making
+// every directory real and linking only the files costs nothing (the bulk is in the files)
+// and keeps the two installs genuinely separate.
+//
+// Case is preserved here, unlike the flat link below, which lowercases because the Quake
+// engines ask for lowercase names. Nothing in a nested tree can assume that.
+function linkTree(src, dst, { skip, link }) {
+    fs.mkdirSync(dst, { recursive: true });
+    const out = [];
+    for (const e of fs.readdirSync(src, { withFileTypes: true })) {
+        if (skip && skip.test(e.name)) continue;
+        const from = path.join(src, e.name);
+        const to = path.join(dst, e.name);
+        if (e.isDirectory()) { out.push(...linkTree(from, to, { skip, link })); continue; }
+        link(from, to);
+        out.push(e.name);
+    }
+    return out;
+}
+
 function folderSatisfies(spec, root) {
     if (!root || !fs.existsSync(root)) return false;
     // Folder-shaped: every required folder must exist and hold its proving file.
@@ -1625,9 +1710,17 @@ function linkGameData(dataId, sourceRoot, targetRoot, extraSource, { copy = fals
             continue;
         }
         const dst = path.join(targetRoot, d.name);   // lowercase: what engines ask for
+        // A tree-shaped directory is mirrored whole. A flat one keeps the original
+        // behaviour: one level, .pak files only, lowercased, which is what the Quake and
+        // Doom engines ask for and what every existing entry here means by `dirs`.
+        if (d.tree) {
+            const names = linkTree(src, dst, { skip: d.skip, link });
+            linked.push(`${d.name}/ (${names.length})`);
+            continue;
+        }
         fs.mkdirSync(dst, { recursive: true });
         for (const f of fs.readdirSync(src)) {
-            if (!/\.pak$/i.test(f)) continue;
+            if (!(d.match || /\.pak$/i).test(f)) continue;
             link(path.join(src, f), path.join(dst, f.toLowerCase()));
         }
         linked.push(d.name);

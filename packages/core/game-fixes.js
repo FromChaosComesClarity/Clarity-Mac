@@ -7,11 +7,15 @@
 // and nothing else will do. Every entry here was found the hard way, on a real machine,
 // and the point of writing it down is that the next person never has to.
 //
-// A fix is one of two things, and an entry may carry both:
+// A fix is one of three things, and an entry may carry several:
 //   • env    , variables the game needs at launch. Applied every time it starts.
 //   • settings, keys in the game's own configuration file. Written once, then left
 //                alone: these are the user's files, and someone who changes a value back
 //                meant to. Only keys we know are wrong get touched, never the whole file.
+//   • wineDesktop, a Wine virtual desktop for a game that changes the display mode and
+//                quits when the host cannot give it the one it asked for. Written into the
+//                prefix once, per executable, and left alone afterwards for the same reason
+//                the settings are.
 //
 // ⚠️ Nothing here fires on a guess. Each entry matches on the executable's own name, so a
 // fix cannot land on a game that merely shares a folder or a title.
@@ -30,6 +34,43 @@ const fs = require('fs');
 const path = require('path');
 
 const FIXES = [
+    {
+        id: 'arcanum',
+        title: 'Arcanum: Of Steamworks and Magick Obscura',
+        exe: 'arcanum.exe',
+        platform: 'darwin',
+        symptom: 'No window ever appears. The game exits a few seconds after Play, silently and with status 0.',
+        why:
+            "Arcanum is a 16-bit colour game. At startup it asks the display for 800x600 at " +
+            "16bpp, and it quits rather than run without it. macOS has had no 16-bit display " +
+            "modes for two decades, so Wine's Mac driver has none to offer and refuses the " +
+            "switch outright: err:system:NtUserChangeDisplaySettings ... returned -2, which is " +
+            "DISP_CHANGE_BADMODE. The process then unwinds and exits before anything is drawn, " +
+            "which is why there is no error and nothing in the log to see. Inside a Wine " +
+            "virtual desktop the mode is Wine's to emulate rather than the display's to " +
+            "provide, and the game gets the surface it asked for. Measured on a real install: " +
+            "without the desktop it is gone in about three seconds having presented no frames; " +
+            "with it, it reaches the menu and keeps presenting 800x600 frames.",
+        env: {},
+        settings: [],
+        // Named after the executable rather than generated, so the desktop a player finds in
+        // their prefix says what put it there. 800x600 is the game's own mode: Wine resizes
+        // the desktop to whatever the game asks for anyway, so this only decides the size of
+        // the window before the game has spoken.
+        wineDesktop: { name: 'Arcanum', size: '800x600' },
+        // ⚠️ This gets the game to its menu and no further into being playable. The world
+        // then draws with blue rectangles of colour noise where sprites should be, and
+        // stutters badly, because Wine's DirectDraw does not honour the colour-key blits this
+        // game does on 16-bit surfaces. Measured against GOG's bundled DDrawCompat as native,
+        // against Wine's own builtin, and against cnc-ddraw: all three look the same, so the
+        // shipped-wrapper rule is left alone. -no3d, which every Wine guide calls essential,
+        // hangs the game on its loading screen here; tested four times, in both ddraw
+        // configurations, and left out for that reason.
+        //
+        // The answer for this game on this host is the arcanum-ce recipe, which is native and
+        // has none of these problems. This entry stays because it is the difference between
+        // the GOG build starting and not, for anyone who wants the original.
+    },
     {
         id: 'outrun2006',
         title: 'OutRun 2006: Coast 2 Coast',
@@ -183,4 +224,15 @@ function applySettings(resolvedExe, installPath) {
     return { applied, fix: fix.id };
 }
 
-module.exports = { listFixes, fixFor, envFor, applySettings, FIXES };
+// The virtual desktop this game needs, or null. Applying it needs a Wine prefix and a
+// runtime to write it with, neither of which belongs in here, so this only answers what.
+// installer-engine.js's applyWineDesktop does the writing.
+function desktopFor(resolvedExe) {
+    const fix = fixFor(resolvedExe);
+    if (!fix || !fix.wineDesktop) return null;
+    const { name, size } = fix.wineDesktop;
+    if (!name || !size) return null;
+    return { fix: fix.id, title: fix.title, name, size };
+}
+
+module.exports = { listFixes, fixFor, envFor, applySettings, desktopFor, FIXES };
