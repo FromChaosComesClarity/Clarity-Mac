@@ -27,9 +27,9 @@ const os   = require('os');
 const { spawn } = require('child_process');
 const Database = require('better-sqlite3');
 const host = require('./platform/index.js');
-// Fixes for individual games. Required here rather than left to an implicit global: without
-// this, every reference below throws ReferenceError, and the try/catch that guards the fixes
-// swallows it as "per-game fix skipped", so none of them have ever run.
+// The Recipe catalogue, Clarity's fix for one named game. Required here rather than left to
+// an implicit global: without this, every reference below throws ReferenceError, and the
+// try/catch that guards the Recipes swallows it as "skipped", so none of them ever ran.
 const gameFixes = require('./game-fixes.js');
 
 // ── Injected context (set by init) ────────────────────────────────────────────
@@ -911,7 +911,7 @@ async function launchGame(gameId, opts = {}) {
         }
     }
 
-    // Fixes for one named game rather than a class of them. Settings are written once and
+    // Recipes: Clarity's fix for one named game, rather than a class of them. Settings are written once and
     // then respected; the environment is applied every launch. Both are no-ops for a game
     // with no entry, which is nearly all of them. See packages/core/game-fixes.js.
     try {
@@ -934,7 +934,7 @@ async function launchGame(gameId, opts = {}) {
                 }
             }
         }
-    } catch (e) { console.log(`[launch] per-game fix skipped: ${e.message}`); }
+    } catch (e) { console.log(`[launch] Recipe skipped: ${e.message}`); }
 
     // Base env: system → custom user vars → compat flags → Installer's required vars (highest
     // priority). Every spawn below builds its environment from this.
@@ -1116,7 +1116,7 @@ async function launchGame(gameId, opts = {}) {
     // here rather than spawned, so the face can offer to install one instead.
     host.runtime.assertAvailable(proton);
 
-    // Per-game fix (see applyFalloutNewCaliforniaFix). Runs before the spawn so the game
+    // Recipe (see applyFalloutNewCaliforniaFix). Runs before the spawn so the game
     // finds its config and registry on this launch rather than the next one, and is
     // self-healing: a prefix that gets rebuilt is re-seeded automatically. It must never
     // be the reason a launch fails, hence the catch.
@@ -1125,13 +1125,13 @@ async function launchGame(gameId, opts = {}) {
         catch (e) { console.error('[launch] New California fix failed:', e.message); }
     }
 
-    // Per-game fix (see applyFalloutLondonFix). Same reason and the same place as above.
+    // Recipe (see applyFalloutLondonFix). Same reason and the same place as above.
     if (isFalloutLondon(game) && installPath) {
         try { applyFalloutLondonFix(installPath, prefix); }
         catch (e) { console.error('[launch] Fallout: London fix failed:', e.message); }
     }
 
-    // Per-game fix (see applyWineDesktop). Before the spawn, because the game reads the
+    // Recipe (see applyWineDesktop). Before the spawn, because the game reads the
     // desktop setting as it starts, and never a reason a launch fails: a game that would
     // have run without it must still get its chance.
     try {
@@ -1304,7 +1304,7 @@ async function injectGogRegistry(game, prefix, proton) {
     });
 }
 
-// ── Per-game fix: a Wine virtual desktop for a game that mode-switches ────────
+// ── Recipe: a Wine virtual desktop for a game that mode-switches ──────────────
 //
 // Some pre-2005 games ask the display for a mode the host cannot provide and quit rather
 // than run without it. Arcanum wants 800x600 at 16bpp, and macOS has no 16-bit modes to
@@ -1380,7 +1380,7 @@ async function applyWineDesktop(desktop, resolvedExe, prefix, proton) {
     });
 }
 
-// ── Per-game fix: Fallout: London One-click Edition (GOG 1897848199) ─────────
+// ── Recipe: Fallout: London One-click Edition (GOG 1897848199) ────────────────
 //
 // Same class of fault as New California above, and the same cause: gogdl downloads the depot
 // and never performs the finishing steps GOG's Windows installer would.
@@ -1479,7 +1479,7 @@ function applyFalloutLondonFix(installPath, prefix) {
     if (seeded) console.log(`[launch] Fallout: London, restored ${seeded} file(s) GOG's installer would have written`);
 }
 
-// ── Per-game fix: Fallout: New California (GOG 1168267909) ───────────────────
+// ── Recipe: Fallout: New California (GOG 1168267909) ──────────────────────────
 // ── GOG bonus manuals ────────────────────────────────────────────────────────
 // GOG sells the extras alongside the game, manuals, cluebooks, reference cards, and
 // exposes them through the same authenticated API Installer already uses for installs. They

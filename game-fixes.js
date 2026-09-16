@@ -1,4 +1,4 @@
-// ── Recipes: Clarity's fix for one named game ─────────────────────────────────
+// ── Fixes for individual games ───────────────────────────────────────────────
 // Most games that misbehave under Proton are fixed by something general: a shipped wrapper
 // DLL that Wine was shadowing, a working directory, a missing runtime. Those belong in the
 // engine, and they are there.
@@ -7,12 +7,7 @@
 // and nothing else will do. Every entry here was found the hard way, on a real machine,
 // and the point of writing it down is that the next person never has to.
 //
-// ⚠️ "Recipe" also names the install-time catalogue in custom-installers.js, the source
-// ports and engines a game can be installed onto. Same word, two catalogues, and the
-// distinction is what they do: those install something, these repair something already
-// installed. Linux's docs/RECIPES.md calls the other kind "install-time recipes".
-//
-// A Recipe carries one of three things, and an entry may carry several:
+// A fix is one of three things, and an entry may carry several:
 //   • env    , variables the game needs at launch. Applied every time it starts.
 //   • settings, keys in the game's own configuration file. Written once, then left
 //                alone: these are the user's files, and someone who changes a value back
@@ -22,8 +17,8 @@
 //                prefix once, per executable, and left alone afterwards for the same reason
 //                the settings are.
 //
-// ⚠️ Nothing fires on a guess. Every Recipe matches on the executable's own filename, so a
-// fix cannot land on a game that merely shares a folder, a title, or a common DLL name.
+// ⚠️ Nothing here fires on a guess. Each entry matches on the executable's own name, so a
+// fix cannot land on a game that merely shares a folder or a title.
 //
 // Two things an entry may narrow itself with:
 //   • exe      , one name or several. A GOG release often ships a launcher, a plain build and
@@ -171,14 +166,14 @@ const FIXES = [
     },
 ];
 
-// Every Recipe the suite carries, for the Control Panel and the manual.
+// Everything the suite knows how to fix, for the Control Panel and the manual.
 // ⚠️ Host-filtered on the same rule fixFor() applies. Without this the Control Panel told a
 // Linux user the suite knows how to fix two games it will never offer them a fix for, which
 // is worse than silence: it reads as a feature that is broken rather than absent.
 function listFixes() {
     return FIXES.filter(f => !f.platform || f.platform === process.platform).map(f => ({
         id: f.id, title: f.title, symptom: f.symptom, why: f.why,
-        handledBy: f.handledBy || 'Recipe',
+        handledBy: f.handledBy || 'per-game fix',
     }));
 }
 
