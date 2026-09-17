@@ -229,7 +229,7 @@ const THEMES = {
   // Mac OS X 10.0 Cheetah / 10.1 Puma. The desktop face also carries Aqua's pinstripes and
   // gel buttons in CSS; here it is the palette alone, because this face has no titlebar, no
   // rail and no pointer to glow under — the chrome Aqua is made of does not exist on a TV.
-  "AQUA": {bg: "#eef2f8", bg_panel: "rgba(255, 255, 255, 0.78)", bg_menu: "#d5dde9", accent: "#3875d7", accent_menu: "#3875d7", text_main: "#000000", text_sec: "#39424f", text_dim: "#6d7889", border: "rgba(56, 117, 215, 0.24)", border_solid: "#97a3b5", font: 'Lucida Grande'},
+  "AQUA": {bg: "#f2f2f2", bg_panel: "rgba(255, 255, 255, 0.80)", bg_menu: "#e6e6e6", accent: "#1464c8", accent_menu: "#1464c8", text_main: "#000000", text_sec: "#3a3a3a", text_dim: "#6e6e6e", border: "rgba(20, 100, 200, 0.22)", border_solid: "#b4b4b4", font: 'Lucida Grande'},
 };
 const THEME_CATEGORIES = {
   "Originals & System": ["Couch (DEFAULT)", "DARK GRAY", "CYBERPUNK", "SNOW", "MOVIESFLIX", "VAPOUR OS", "PSIV BLUE", "GREEN BOX", "OAKANIZER DARK"],

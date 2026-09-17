@@ -354,7 +354,64 @@
 
        ⚠️ Scoped away from controls that are not push buttons (the icon rail, window controls,
        theme swatches). Capsule-ing those turns the rail into a toy. */
-    body.sys-aqua { -webkit-font-smoothing: antialiased; }
+    /* ── The gel, as four fills ──────────────────────────────────────────────
+       Hoisted into custom properties because the same glass is used by the push button, the
+       default button, the active segment, the selected rail item and the scrollbar thumb, and
+       five hand-copied four-layer gradients drift apart within one revision. It also makes
+       the rest of the family (Jaguar, Panther, Leopard) a change of stops rather than a
+       rewrite.
+
+       Each fill is four layers, outermost first:
+         1. CORE GLOW      a white ellipse rising from below the bottom edge. This is the
+                           bright middle of the pill.
+         2. CAP TINT       blue pooling at the left and right ends, in PIXELS not percent —
+                           the glass is as thick at the cap of a wide button as a narrow one,
+                           and a percentage smeared the tint halfway across a full-width one.
+         3. EDGE VIGNETTE  blue running inward from the whole perimeter. A top-to-bottom
+                           gradient cannot express this; it needs a radial.
+         4. BODY           the vertical gradient, with the hard break that reads as glass.
+
+       The separate `::before` lens draws the inner capsule outline across the top third. That
+       hard inner edge is what says "a dome is sitting on this"; layered gradients only ramp,
+       they never produce an edge. */
+    body.sys-aqua {
+        -webkit-font-smoothing: antialiased;
+
+        /* Rectangular controls (segments) take this instead of --aqua-clear: the capsule
+           glass carries a blue vignette and blue caps, and on a five-up segmented row that
+           made every inactive segment read as selected. Aqua's own segments are plain grey
+           glass until one is picked. */
+        --aqua-plain:
+            linear-gradient(to bottom, #ffffff 0%, #fbfbfb 46%, #e3e3e3 54%, #f4f4f4 100%);
+
+        --aqua-clear:
+            radial-gradient(ellipse 112% 96% at 50% 128%, rgba(255,255,255,1) 0%, rgba(255,255,255,0.72) 28%, rgba(255,255,255,0) 58%),
+            linear-gradient(to right, rgba(74,124,182,0.85) 0px, rgba(74,124,182,0.20) 20px, rgba(74,124,182,0) 46px,
+                                      rgba(74,124,182,0) calc(100% - 46px), rgba(74,124,182,0.20) calc(100% - 20px), rgba(74,124,182,0.85) 100%),
+            radial-gradient(ellipse 150% 120% at 50% 42%, rgba(255,255,255,0) 14%, rgba(138,181,225,0.62) 56%, rgba(70,122,182,0.98) 100%),
+            linear-gradient(to bottom, #dcecfb 0%, #bfdaf3 46%, #a6c8e9 54%, #d2e6f8 100%);
+
+        --aqua-blue:
+            radial-gradient(ellipse 110% 94% at 50% 130%, rgba(226,245,255,0.98) 0%, rgba(150,206,250,0.55) 30%, rgba(255,255,255,0) 60%),
+            linear-gradient(to right, rgba(16,72,140,0.85) 0px, rgba(16,72,140,0.24) 20px, rgba(16,72,140,0) 48px,
+                                      rgba(16,72,140,0) calc(100% - 48px), rgba(16,72,140,0.24) calc(100% - 20px), rgba(16,72,140,0.85) 100%),
+            radial-gradient(ellipse 148% 118% at 50% 40%, rgba(255,255,255,0) 8%, rgba(48,124,208,0.55) 52%, rgba(22,88,168,0.98) 100%),
+            linear-gradient(to bottom, #cbe6fd 0%, #8ac5f4 45%, #2f7fd4 46%, #3f8ede 76%, #7dbdf3 100%);
+
+        --aqua-blue-hi:
+            radial-gradient(ellipse 110% 94% at 50% 130%, rgba(240,251,255,1) 0%, rgba(174,224,253,0.60) 30%, rgba(255,255,255,0) 60%),
+            linear-gradient(to right, rgba(24,88,160,0.80) 0px, rgba(24,88,160,0.22) 20px, rgba(24,88,160,0) 48px,
+                                      rgba(24,88,160,0) calc(100% - 48px), rgba(24,88,160,0.22) calc(100% - 20px), rgba(24,88,160,0.80) 100%),
+            radial-gradient(ellipse 148% 118% at 50% 40%, rgba(255,255,255,0) 8%, rgba(64,144,228,0.55) 52%, rgba(30,104,188,0.98) 100%),
+            linear-gradient(to bottom, #ddf1ff 0%, #a1d3f9 45%, #3a8ee2 46%, #52a3ea 76%, #97cdf9 100%);
+
+        --aqua-pressed:
+            radial-gradient(ellipse 110% 94% at 50% 130%, rgba(170,206,238,0.70) 0%, rgba(120,170,220,0.32) 30%, rgba(255,255,255,0) 60%),
+            linear-gradient(to right, rgba(10,52,104,0.90) 0px, rgba(10,52,104,0.28) 20px, rgba(10,52,104,0) 48px,
+                                      rgba(10,52,104,0) calc(100% - 48px), rgba(10,52,104,0.28) calc(100% - 20px), rgba(10,52,104,0.90) 100%),
+            radial-gradient(ellipse 148% 118% at 50% 40%, rgba(255,255,255,0) 8%, rgba(28,86,156,0.62) 52%, rgba(14,64,126,1) 100%),
+            linear-gradient(to bottom, #9cc6ea 0%, #6ba3dd 45%, #21619f 46%, #2f74bd 76%, #63a2dc 100%);
+    }
     body.sys-aqua, body.sys-aqua * { text-transform: none !important; }
     body.sys-aqua .titlebar-brand { letter-spacing: 0.6px !important; font-weight: 500; }
 
@@ -385,111 +442,118 @@
     body.sys-aqua .modal-box,
     body.sys-aqua #modal-tools > div,
     body.sys-aqua #modal-themes > div {
+        /* Sampled, not guessed: #ffffff → #f1f1f1 → #eaeaea → #f1f1f1 on a 4px cycle.
+           The previous stripe was rgba(150,175,208,0.20) over a blue page, which flattens to
+           about #dce2ec — both darker than the real line and a cold blue where Aqua's is a
+           neutral grey. Opaque, because these ARE the surface, not a tint over one. */
         background-image: repeating-linear-gradient(to bottom,
-            rgba(255,255,255,0.92) 0px, rgba(255,255,255,0.92) 2px,
-            rgba(150,175,208,0.20) 2px, rgba(150,175,208,0.20) 4px);
+            #ffffff 0px, #ffffff 1px,
+            #f1f1f1 1px, #f1f1f1 2px,
+            #eaeaea 2px, #eaeaea 3px,
+            #f1f1f1 3px, #f1f1f1 4px);
     }
 
     /* 2. Titlebar and rail: Aqua's chrome, a vertical gradient under the same pinstripe. */
     body.sys-aqua #titlebar {
-        background-color: #dbe2ec;
+        background-color: #ececec;
         background-image:
-            repeating-linear-gradient(to bottom, rgba(255,255,255,0.55) 0px, rgba(255,255,255,0.55) 2px, rgba(140,165,200,0.18) 2px, rgba(140,165,200,0.18) 4px),
-            linear-gradient(to bottom, #f7f9fc 0%, #dde4ee 55%, #ccd5e2 100%);
-        border-bottom: 1px solid #8c99ab !important;
+            repeating-linear-gradient(to bottom, rgba(255,255,255,0.65) 0px, rgba(255,255,255,0.65) 1px, rgba(0,0,0,0) 1px, rgba(0,0,0,0) 2px, rgba(0,0,0,0.055) 2px, rgba(0,0,0,0.055) 3px, rgba(0,0,0,0) 3px, rgba(0,0,0,0) 4px),
+            linear-gradient(to bottom, #fbfbfb 0%, #eeeeee 55%, #e1e1e1 100%);
+        border-bottom: 1px solid #b0b0b0 !important;
     }
     body.sys-aqua #icon-rail {
-        background-color: #dbe2ec;
+        background-color: #ececec;
         background-image:
-            repeating-linear-gradient(to bottom, rgba(255,255,255,0.55) 0px, rgba(255,255,255,0.55) 2px, rgba(140,165,200,0.18) 2px, rgba(140,165,200,0.18) 4px),
-            linear-gradient(to right, #eef2f8 0%, #dae1ec 70%, #cbd4e1 100%);
-        border-right: 1px solid #8c99ab !important;
+            repeating-linear-gradient(to bottom, rgba(255,255,255,0.65) 0px, rgba(255,255,255,0.65) 1px, rgba(0,0,0,0) 1px, rgba(0,0,0,0) 2px, rgba(0,0,0,0.055) 2px, rgba(0,0,0,0.055) 3px, rgba(0,0,0,0) 3px, rgba(0,0,0,0) 4px),
+            linear-gradient(to right, #f6f6f6 0%, #ebebeb 70%, #dedede 100%);
+        border-right: 1px solid #b0b0b0 !important;
     }
-    body.sys-aqua .rail-btn.active::before { background: #3875d7 !important; border-radius: 0 3px 3px 0; }
+    body.sys-aqua .rail-btn.active::before { background: #1464c8 !important; border-radius: 0 3px 3px 0; }
 
-    /* 3. The plain gel button. Capsule radius of 999px always resolves to height/2, which is
-       what Aqua did at every size. */
+    /* 3. The push button: clear glass at rest, and it FILLS WITH BLUE on rollover.
+       ⚠️ An outer halo was the wrong instinct — it lights the air around the control instead
+       of the control. Aqua's rollover put the colour inside, so the fill, the border and the
+       label all swap together and the button becomes the blue lozenge rather than a white one
+       wearing a blue ring. */
     body.sys-aqua button:not(.win-btn):not(.rail-btn):not(.segmented-btn):not(.theme-cat-btn):not(.cp-rail-item) {
+        position: relative;
         border-radius: 999px;
-        border: 1px solid #93a1b5;
-        color: #101316;
+        border: 1px solid #7099c4;
+        color: #0d1117;
         font-weight: 400;
-        text-shadow: 0 1px 0 rgba(255,255,255,0.9);
-        background-image:
-            linear-gradient(to bottom, rgba(255,255,255,0.98) 0%, rgba(255,255,255,0.62) 44%, rgba(255,255,255,0.10) 50%, rgba(255,255,255,0) 50%, rgba(255,255,255,0) 100%),
-            linear-gradient(to bottom, #ffffff 0%, #f2f7fc 49%, #c9d6e6 50%, #dde7f2 78%, #fbfdff 100%);
+        text-shadow: 0 1px 0 rgba(255,255,255,0.85);
+        background-image: var(--aqua-clear);
         box-shadow:
-            inset 0 1px 1px rgba(255,255,255,0.98),
-            inset 0 -7px 11px -7px rgba(255,255,255,0.95),
+            inset 0 1px 0 rgba(255,255,255,0.98),
+            inset 0 11px 20px rgba(255,255,255,0.50),
+            inset 0 -13px 20px -9px rgba(255,255,255,1),
             0 1px 2px rgba(30,55,90,0.26);
-        transition: box-shadow 0.18s ease, background-image 0.18s ease;
+        transition: background-image 0.14s ease, color 0.14s ease, border-color 0.14s ease;
     }
-    /* The glow. An added halo, not a repaint, so the candy underneath keeps its shape. */
+    /* The lens: a true capsule, inset a fixed 6px so its own edge shows.
+       ⚠️ It was `border-radius: 999px / 100%` — an elliptical radius, meant to make the arc
+       follow the button's curve. On anything wider than it is tall that resolves to flat top
+       and bottom edges with blunt ends, i.e. a visible light RECTANGLE sitting over the
+       label. A plain 999px radius caps the ends at height/2 and gives the lozenge the shape
+       was reaching for, and the gradient now fades to fully transparent so the lens has no
+       hard bottom edge either. Fixed px rather than a percentage for the inset, for the same
+       reason the cap tint uses px: the lens should not stretch with the button. */
+    body.sys-aqua button:not(.win-btn):not(.rail-btn):not(.segmented-btn):not(.theme-cat-btn):not(.cp-rail-item)::before {
+        content: ''; position: absolute; left: 6px; right: 6px; top: 1px; height: 46%;
+        border-radius: 999px;
+        background-image: linear-gradient(to bottom, rgba(255,255,255,0.95) 0%, rgba(255,255,255,0.45) 55%, rgba(255,255,255,0) 100%);
+        pointer-events: none;
+    }
     body.sys-aqua button:not(.win-btn):not(.rail-btn):not(.segmented-btn):not(.theme-cat-btn):not(.cp-rail-item):hover {
-        color: #101316 !important;
-        border-color: #6d90c4 !important;
-        background-image:
-            linear-gradient(to bottom, rgba(255,255,255,1) 0%, rgba(255,255,255,0.70) 44%, rgba(255,255,255,0.14) 50%, rgba(255,255,255,0) 50%, rgba(255,255,255,0) 100%),
-            linear-gradient(to bottom, #ffffff 0%, #f7fbff 49%, #cfdef0 50%, #e4effa 78%, #ffffff 100%) !important;
-        box-shadow:
-            inset 0 1px 1px rgba(255,255,255,1),
-            inset 0 -8px 13px -7px rgba(255,255,255,1),
-            0 1px 2px rgba(30,55,90,0.26),
-            0 0 11px 2px rgba(116,183,247,0.75) !important;
+        color: #ffffff !important;
+        border-color: #235f9f !important;
+        text-shadow: 0 -1px 1px rgba(0,25,65,0.75);
+        background-image: var(--aqua-blue) !important;
     }
     body.sys-aqua button:not(.win-btn):not(.rail-btn):not(.segmented-btn):not(.theme-cat-btn):not(.cp-rail-item):active {
-        background-image:
-            linear-gradient(to bottom, rgba(255,255,255,0.55) 0%, rgba(255,255,255,0.22) 44%, rgba(255,255,255,0) 50%, rgba(255,255,255,0) 100%),
-            linear-gradient(to bottom, #c9d6e5 0%, #b6c6da 49%, #9fb3cb 50%, #b2c4d8 80%, #cfdbe9 100%) !important;
-        box-shadow: inset 0 2px 5px rgba(30,55,90,0.35) !important;
+        color: #ffffff !important;
+        border-color: #1b4d84 !important;
+        background-image: var(--aqua-pressed) !important;
+        box-shadow: inset 0 2px 5px rgba(12,40,80,0.45) !important;
     }
 
-    /* 4. The default button: Aqua's blue lozenge. Lighter and more saturated than a modern
-       accent fill, because the gloss sits over it and eats a lot of the colour.
-       ⚠️ White on this blue is roughly 3:1 — genuinely low, and genuinely what Apple shipped.
-       The dark text shadow is theirs too, and it is what makes the label sit on the surface
-       rather than float over it. Authenticity is the point of this theme, so it stays. */
+    /* 4. The default button: the same glass, already filled. In 10.0 this one pulsed; a
+       steady lozenge is the honest still frame, and an animation under a games library would
+       be noise.
+       ⚠️ White on this blue is roughly 4:1 where the label sits, which took measuring — the
+       first attempt put the text on the pale side of the break at 2.3:1 and it dissolved. */
     body.sys-aqua button.primary:not(.win-btn):not(.rail-btn):not(.segmented-btn) {
-        border: 1px solid #2f6cb5;
+        border: 1px solid #235f9f;
         color: #ffffff;
-        text-shadow: 0 -1px 1px rgba(0,25,65,0.72);
-        background-image:
-            linear-gradient(to bottom, rgba(255,255,255,0.95) 0%, rgba(255,255,255,0.52) 44%, rgba(255,255,255,0.08) 50%, rgba(255,255,255,0) 50%, rgba(255,255,255,0) 100%),
-            linear-gradient(to bottom, #c5e3fb 0%, #83c0f3 49%, #2f7fd4 50%, #4293dd 78%, #8fcaf7 100%);
+        text-shadow: 0 -1px 1px rgba(0,25,65,0.75);
+        background-image: var(--aqua-blue);
         box-shadow:
-            inset 0 1px 1px rgba(255,255,255,0.92),
-            inset 0 -7px 12px -7px rgba(190,228,255,0.95),
+            inset 0 1px 0 rgba(255,255,255,0.85),
+            inset 0 11px 20px rgba(255,255,255,0.26),
+            inset 0 -14px 22px -9px rgba(198,232,255,1),
             0 1px 3px rgba(18,52,102,0.38);
     }
     body.sys-aqua button.primary:not(.win-btn):not(.rail-btn):not(.segmented-btn):hover {
         color: #ffffff !important;
-        border-color: #2f6cb5 !important;
-        background-image:
-            linear-gradient(to bottom, rgba(255,255,255,1) 0%, rgba(255,255,255,0.60) 44%, rgba(255,255,255,0.12) 50%, rgba(255,255,255,0) 50%, rgba(255,255,255,0) 100%),
-            linear-gradient(to bottom, #d6ecff 0%, #95cdf8 49%, #3a8ee2 50%, #52a3ea 78%, #a2d6fb 100%) !important;
-        box-shadow:
-            inset 0 1px 1px rgba(255,255,255,1),
-            inset 0 -8px 14px -7px rgba(210,238,255,1),
-            0 1px 3px rgba(18,52,102,0.38),
-            0 0 13px 3px rgba(104,178,247,0.90) !important;
+        border-color: #235f9f !important;
+        background-image: var(--aqua-blue-hi) !important;
     }
     body.sys-aqua button.primary:not(.win-btn):not(.rail-btn):not(.segmented-btn):active {
-        background-image:
-            linear-gradient(to bottom, rgba(255,255,255,0.55) 0%, rgba(255,255,255,0.20) 44%, rgba(255,255,255,0) 50%, rgba(255,255,255,0) 100%),
-            linear-gradient(to bottom, #8dbde8 0%, #5b98d8 49%, #2a6cb8 50%, #3f83c9 80%, #74aee0 100%) !important;
+        background-image: var(--aqua-pressed) !important;
         box-shadow: inset 0 2px 5px rgba(12,40,80,0.45) !important;
     }
 
     /* 5. Segmented controls: rectangular, same candy, same glow. */
-    body.sys-aqua .segmented-control { border-color: #93a1b5; border-radius: 9px; }
+    body.sys-aqua .segmented-control { border-color: #aeaeae; border-radius: 9px; }
     body.sys-aqua .segmented-btn {
-        color: #1d242e; border-right-color: #a3aebf; font-weight: 400;
-        background-image:
-            linear-gradient(to bottom, rgba(255,255,255,0.95) 0%, rgba(255,255,255,0.55) 44%, rgba(255,255,255,0.08) 50%, rgba(255,255,255,0) 50%, rgba(255,255,255,0) 100%),
-            linear-gradient(to bottom, #ffffff 0%, #f2f7fc 49%, #c9d6e6 50%, #dde7f2 78%, #fbfdff 100%);
+        color: #1d242e; border-right-color: #bcbcbc; font-weight: 400;
+        background-image: var(--aqua-plain);
     }
+    /* Rollover fills with blue here too, just a lighter pour than the selected segment so the
+       two are still told apart while the cursor is over one. */
     body.sys-aqua .segmented-btn:hover {
-        color: #101316; box-shadow: inset 0 0 10px rgba(116,183,247,0.45);
+        color: #ffffff; text-shadow: 0 -1px 1px rgba(0,25,65,0.6);
+        background-image: var(--aqua-blue-hi);
     }
     /* ⚠️ The segmented control gets its own break, at 40% rather than 50%. It is a short
        control — 8px of padding around an 11px label — so a midpoint break lands the text
@@ -499,8 +563,7 @@
     body.sys-aqua .segmented-btn.active {
         color: #ffffff; text-shadow: 0 -1px 1px rgba(0,25,65,0.72);
         background-image:
-            linear-gradient(to bottom, rgba(255,255,255,0.92) 0%, rgba(255,255,255,0.46) 34%, rgba(255,255,255,0.08) 40%, rgba(255,255,255,0) 40%, rgba(255,255,255,0) 100%),
-            linear-gradient(to bottom, #b2daf9 0%, #6fb4ee 39%, #2f7fd4 40%, #3d8bda 80%, #6fb8f2 100%);
+            var(--aqua-blue);
     }
 
     /* 6. Text fields: white, inset, with Aqua's blue focus halo. */
@@ -509,12 +572,12 @@
     body.sys-aqua input[type="number"],
     body.sys-aqua textarea,
     body.sys-aqua select {
-        background: #ffffff; color: #000000; border: 1px solid #93a1b5; border-radius: 9px;
+        background: #ffffff; color: #000000; border: 1px solid #aeaeae; border-radius: 9px;
         box-shadow: inset 0 1px 2px rgba(30,55,90,0.20);
         font-family: 'Lucida Grande', 'Helvetica Neue', Helvetica, sans-serif;
     }
     body.sys-aqua #gallery-search {
-        background: #ffffff !important; color: #000000 !important; border: 1px solid #93a1b5 !important;
+        background: #ffffff !important; color: #000000 !important; border: 1px solid #aeaeae !important;
         border-radius: 999px !important; box-shadow: inset 0 1px 2px rgba(30,55,90,0.20) !important;
         font-weight: 400; letter-spacing: 0 !important;
     }
@@ -522,7 +585,7 @@
         border-color: #5a9de8 !important;
         box-shadow: 0 0 0 3px rgba(104,178,247,0.55), inset 0 1px 2px rgba(30,55,90,0.18) !important;
     }
-    body.sys-aqua #gallery-search::placeholder { color: #7c8899; }
+    body.sys-aqua #gallery-search::placeholder { color: #8a8a8a; }
     body.sys-aqua input[type="text"]:focus,
     body.sys-aqua input[type="password"]:focus,
     body.sys-aqua textarea:focus {
@@ -533,20 +596,19 @@
     /* 7. The scrollbar, which in 10.0 was a blue gel capsule in a pinstriped trough. */
     body.sys-aqua ::-webkit-scrollbar { width: 14px; height: 14px; }
     body.sys-aqua ::-webkit-scrollbar-track {
-        background-color: #e9edf4;
-        background-image: repeating-linear-gradient(to bottom, rgba(255,255,255,0.85) 0px, rgba(255,255,255,0.85) 2px, rgba(150,175,208,0.22) 2px, rgba(150,175,208,0.22) 4px);
-        border-left: 1px solid #b6c1d1;
+        background-color: #eeeeee;
+        background-image: repeating-linear-gradient(to bottom,
+            #ffffff 0px, #ffffff 1px, #f1f1f1 1px, #f1f1f1 2px, #eaeaea 2px, #eaeaea 3px, #f1f1f1 3px, #f1f1f1 4px);
+        border-left: 1px solid #bdbdbd;
     }
     body.sys-aqua ::-webkit-scrollbar-thumb {
         border-radius: 999px; border: 1px solid #2f6cb5;
         background-image:
-            linear-gradient(to bottom, rgba(255,255,255,0.95) 0%, rgba(255,255,255,0.50) 44%, rgba(255,255,255,0.08) 50%, rgba(255,255,255,0) 50%, rgba(255,255,255,0) 100%),
-            linear-gradient(to bottom, #c5e3fb 0%, #83c0f3 49%, #2f7fd4 50%, #4293dd 78%, #8fcaf7 100%);
+            var(--aqua-blue);
     }
     body.sys-aqua ::-webkit-scrollbar-thumb:hover {
         background-image:
-            linear-gradient(to bottom, rgba(255,255,255,1) 0%, rgba(255,255,255,0.58) 44%, rgba(255,255,255,0.12) 50%, rgba(255,255,255,0) 50%, rgba(255,255,255,0) 100%),
-            linear-gradient(to bottom, #d6ecff 0%, #95cdf8 49%, #3a8ee2 50%, #52a3ea 78%, #a2d6fb 100%);
+            var(--aqua-blue-hi);
     }
 
     /* 8. Sheets and cards: white, generously rounded, dropped over the page like an Aqua sheet. */
@@ -554,12 +616,12 @@
     body.sys-aqua #modal-tools > div,
     body.sys-aqua #modal-themes > div,
     body.sys-aqua #modal-welcome > div {
-        border: 1px solid #8c99ab; border-radius: 14px;
+        border: 1px solid #b0b0b0; border-radius: 14px;
         box-shadow: 0 22px 60px rgba(20,40,75,0.40);
     }
     body.sys-aqua .tool-card {
         background-color: rgba(255,255,255,0.80);
-        border: 1px solid #b2bdcd; border-radius: 10px;
+        border: 1px solid #c9c9c9; border-radius: 10px;
         box-shadow: inset 0 1px 0 rgba(255,255,255,0.90);
     }
     body.sys-aqua .cp-rail-item:hover { box-shadow: inset 0 0 10px rgba(116,183,247,0.40); }
@@ -567,13 +629,71 @@
         color: #ffffff !important; border-color: #2f6cb5 !important;
         text-shadow: 0 -1px 1px rgba(0,25,65,0.72);
         background-image:
-            linear-gradient(to bottom, rgba(255,255,255,0.95) 0%, rgba(255,255,255,0.52) 44%, rgba(255,255,255,0.08) 50%, rgba(255,255,255,0) 50%, rgba(255,255,255,0) 100%),
-            linear-gradient(to bottom, #c5e3fb 0%, #83c0f3 49%, #2f7fd4 50%, #4293dd 78%, #8fcaf7 100%) !important;
+            var(--aqua-blue) !important;
         background-color: transparent !important;
     }
 
+    /* 9. Traffic lights. The system's are hidden while Aqua is on (see the
+       `aqua-window-buttons` channel in main.js) and these three take over — they are the same
+       #btn-min / #btn-max / #btn-close that every non-macOS host uses, so the handlers were
+       already there and already work.
+
+       A gel sphere is the same idea as the button, minus the capsule: a coloured body, a dark
+       rim where the glass turns away from the viewer, a bright specular near the top-left, and
+       a faint bounce at the bottom. The specular is its own ::after so it stays white over red,
+       yellow and green alike.
+
+       ⚠️ Positioned absolutely at the left of the titlebar rather than left in the flow. In
+       the markup they sit at the END of .titlebar-controls, on the right, after Home / Library
+       / Downloads — which is where a Windows titlebar wants them and the opposite of where a
+       Mac does. Absolute placement also fixes their ORDER: macOS reads close, minimise, zoom,
+       and the markup order is minimise, maximise, close. */
+    body.sys-aqua #titlebar { position: relative; }
+    body.sys-aqua .titlebar-controls .win-btn {
+        display: block !important;
+        position: absolute; top: 50%; transform: translateY(-50%);
+        width: 13px; height: 13px; min-width: 0; padding: 0;
+        border-radius: 50%; font-size: 0; color: transparent;
+        -webkit-app-region: no-drag;
+        border: 1px solid rgba(0,0,0,0.52);
+        box-shadow:
+            inset 0 -3px 5px -2px rgba(255,255,255,0.55),
+            inset 0 1px 1px rgba(255,255,255,0.30),
+            0 1px 1px rgba(0,0,0,0.22);
+        transition: filter 0.12s ease;
+    }
+    body.sys-aqua .titlebar-controls .win-btn::after {
+        content: ''; position: absolute; left: 22%; right: 22%; top: 9%; height: 38%;
+        border-radius: 50%;
+        background-image: linear-gradient(to bottom, rgba(255,255,255,0.95), rgba(255,255,255,0.15));
+        pointer-events: none;
+    }
+    /* close, minimise, zoom — left to right, the way the Mac reads them. */
+    body.sys-aqua #btn-close { left: 12px;
+        background-image:
+            radial-gradient(circle at 50% 116%, rgba(255,255,255,0.62) 0%, rgba(255,255,255,0) 46%),
+            radial-gradient(circle at 50% 130%, rgba(214,86,78,0.95) 0%, rgba(214,86,78,0) 62%),
+            linear-gradient(to bottom, #f7c3ba 0%, #ea9086 42%, #dd6f66 74%, #cf5a52 100%); }
+    body.sys-aqua #btn-min   { left: 32px;
+        background-image:
+            radial-gradient(circle at 50% 116%, rgba(255,255,255,0.62) 0%, rgba(255,255,255,0) 46%),
+            radial-gradient(circle at 50% 130%, rgba(219,176,54,0.95) 0%, rgba(219,176,54,0) 62%),
+            linear-gradient(to bottom, #fcf0c0 0%, #f4de8a 42%, #ecce5c 74%, #dcb93f 100%); }
+    body.sys-aqua #btn-max   { left: 52px;
+        background-image:
+            radial-gradient(circle at 50% 116%, rgba(255,255,255,0.62) 0%, rgba(255,255,255,0) 46%),
+            radial-gradient(circle at 50% 130%, rgba(126,178,74,0.95) 0%, rgba(126,178,74,0) 62%),
+            linear-gradient(to bottom, #dcefc0 0%, #bfe096 42%, #a3ce6e 74%, #86bb50 100%); }
+    /* Aqua lit these up as the pointer neared the group; brightening in place keeps that
+       without inventing the glyphs, which 10.0 only drew on rollover anyway. */
+    body.sys-aqua .titlebar-controls .win-btn:hover { filter: brightness(1.12) saturate(1.15); background-color: transparent; }
+    body.sys-aqua .titlebar-controls .win-btn:active { filter: brightness(0.9); }
+    /* The window's own name sat clear of them; the reserved gap is already there for the
+       system's set, so it only needs to survive ours. */
+    body.sys-aqua.platform-darwin .titlebar-brand { padding-left: 78px; }
+
     /* 9. Selection, the one place the accent fills a whole run of text. */
-    body.sys-aqua ::selection { background: #3875d7; color: #ffffff; }
+    body.sys-aqua ::selection { background: #1464c8; color: #ffffff; }
 
     #side-panel { width: 0; flex-shrink: 0; overflow: hidden; transition: width 0.22s ease; background: rgba(0,0,0,0.25); display: flex; flex-direction: column; border-right: 0px solid var(--border_solid); }
     #side-panel.open { width: 220px; border-right: 1px solid var(--border_solid); }

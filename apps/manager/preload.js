@@ -284,5 +284,7 @@ contextBridge.exposeInMainWorld('api', {
                                 // told the state rather than tracking it.
                                 onFullscreenChanged: cb => ipcRenderer.on('window-fullscreen-changed', (_e, on) => cb(on)),
                                 maximizeApp: () => ipcRenderer.send('window-maximize'),
-                                closeApp: () => ipcRenderer.send('window-close')
+                                closeApp: () => ipcRenderer.send('window-close'),
+                                // Aqua only: hand the traffic lights to the page, or give them back.
+                                aquaWindowButtons: (ours) => ipcRenderer.send('aqua-window-buttons', !!ours)
 });

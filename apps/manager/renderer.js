@@ -8298,7 +8298,7 @@ const THEMES = {
     // pinstripes, the gel and the blue lozenge live in `body.sys-aqua` in index.html, hung on
     // the same hook the Windows XP theme uses. Lucida Grande ships with macOS, so the era
     // font needs no @font-face of its own.
-    "AQUA": {bg: "#eef2f8", bg_panel: "rgba(255, 255, 255, 0.78)", bg_menu: "#d5dde9", accent: "#3875d7", accent_menu: "#3875d7", text_main: "#000000", text_sec: "#39424f", text_dim: "#6d7889", border: "rgba(56, 117, 215, 0.24)", border_solid: "#97a3b5", font: 'Lucida Grande'},
+    "AQUA": {bg: "#f2f2f2", bg_panel: "rgba(255, 255, 255, 0.80)", bg_menu: "#e6e6e6", accent: "#1464c8", accent_menu: "#1464c8", text_main: "#000000", text_sec: "#3a3a3a", text_dim: "#6e6e6e", border: "rgba(20, 100, 200, 0.22)", border_solid: "#b4b4b4", font: 'Lucida Grande'},
 };
 
 const THEME_CATEGORIES = {
@@ -8349,6 +8349,9 @@ function applyTheme(themeName) {
     try { applyOmarchyGeometry(themeName === OMARCHY_THEME_KEY); } catch {}
     document.body.classList.toggle('sys-xp', themeName === 'WINDOWS XP');   // light chrome text on the Luna-blue titlebar+rail
     document.body.classList.toggle('sys-aqua', themeName === 'AQUA');       // pinstripes, gel buttons, blue scrollbars
+    // Aqua wants its own traffic lights; every other theme gives the OS's back. Told on each
+    // change rather than only on the way in, so leaving Aqua can never strand the window.
+    try { window.api.aquaWindowButtons?.(themeName === 'AQUA'); } catch {}
     document.body.classList.toggle('theme-light', _isLightBg(tConfig.bg));  // accent hover instead of near-black invert
     applyUiFont();                         // theme's era font wins; otherwise the picker's ui_font
     // The macOS card is a view of "is the macOS theme the active one", so every route into
