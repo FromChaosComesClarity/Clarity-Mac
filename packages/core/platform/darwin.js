@@ -194,6 +194,11 @@ const desktop = {
     // host once already, and these have exactly the same shape.
     omarchy: null,
     omarchyTheme: null,
+    // The macOS counterpart: Omarchy's theme bridge answers "what palette is this desktop
+    // wearing", and so does this one, from System Settings ▸ Appearance instead of a
+    // colors.toml. linux.js has no such key, and every caller reaches it through
+    // `host.desktop?.macosTheme`, so it is absent there rather than null.
+    macosTheme: require('../macos-theme.js'),
 };
 
 // ── Steam ────────────────────────────────────────────────────────────────────

@@ -223,6 +223,10 @@ contextBridge.exposeInMainWorld('api', {
                                 omarchyTheme:    () => ipcRenderer.invoke('omarchy-theme'),
                                 // Fires when the user runs `omarchy theme set`, so the app can follow.
                                 onOmarchyThemeChanged: (cb) => ipcRenderer.on('omarchy-theme-changed', (_e, d) => cb(d)),
+                                macosTheme:      () => ipcRenderer.invoke('macos-theme'),
+                                // Fires on System Settings ▸ Appearance: Light/Dark (including the
+                                // Auto flip at sunset) and the accent colour.
+                                onMacosThemeChanged: (cb) => ipcRenderer.on('macos-theme-changed', (_e, d) => cb(d)),
                                 customFolderPick: (title) => ipcRenderer.invoke('custom-folder-pick', title),
                                 customFolderScan: (folder) => ipcRenderer.invoke('custom-folder-scan', folder),
                                 customFolderAdd:  (payload) => ipcRenderer.invoke('custom-folder-add', payload),

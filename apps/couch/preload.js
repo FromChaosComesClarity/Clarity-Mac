@@ -19,6 +19,8 @@ contextBridge.exposeInMainWorld('api', {
                                 getSetting: (k) => ipcRenderer.invoke('get-setting', k),
                                 omarchyTheme: () => ipcRenderer.invoke('omarchy-theme'),
                                 onOmarchyThemeChanged: (cb) => ipcRenderer.on('omarchy-theme-changed', (_e, d) => cb(d)),
+                                macosTheme: () => ipcRenderer.invoke('macos-theme'),
+                                onMacosThemeChanged: (cb) => ipcRenderer.on('macos-theme-changed', (_e, d) => cb(d)),
                                 setSetting: (k, v) => ipcRenderer.invoke('set-setting', k, v),
                                 getHomeStats: (opts) => ipcRenderer.invoke('get-home-stats', opts),
                                 getRandomGame: (c) => ipcRenderer.invoke('get-random-game', c),

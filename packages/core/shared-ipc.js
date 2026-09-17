@@ -184,6 +184,25 @@ function registerSharedHandlers(ctx) {
         } catch {}
     }
 
+    // ── The macOS appearance ─────────────────────────────────────────────────
+    // Same reasoning as the Omarchy block above, and shared for the same reason: Couch
+    // mirrors the Manager's theme by name, so a theme only one face knows about would break
+    // that mirror. Absent on Linux (platform/linux.js has no `macosTheme`), where this
+    // answers "unavailable" and every face carries on with its own themes.
+    const macosTheme = host.desktop?.macosTheme || null;
+    ipcMain.handle('macos-theme', () => macosTheme?.describe?.() || { available: false, name: '', theme: null, mode: '', accent: '', accentName: '' });
+
+    if (macosTheme?.isSupported?.()) {
+        try {
+            const stop = macosTheme.watch(d => {
+                for (const w of BrowserWindow.getAllWindows()) {
+                    try { w.webContents.send('macos-theme-changed', d); } catch {}
+                }
+            });
+            try { require('electron').app.on('before-quit', () => { try { stop(); } catch {} }); } catch {}
+        } catch {}
+    }
+
     ipcMain.handle('get-setting', (e, key) => { try { const row = db.prepare("SELECT value FROM settings WHERE key=?").get(key); return row ? row.value : null; } catch(e) { return null; } });
 
     ipcMain.handle('set-setting', (e, key, val) => { try { db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)").run(key, val); return true; } catch(e) { return false; } });

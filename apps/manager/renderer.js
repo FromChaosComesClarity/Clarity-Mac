@@ -7887,6 +7887,7 @@ modalTools.addEventListener('click', e => { if (e.target === modalTools) closeTo
         ['btn-scan-updates', 'library'],
         ['btn-scan-genres', 'library'],
         ['btn-theme-switch', 'appearance'],
+        ['macos-appearance-card', 'appearance'],   // sits with the Themes screen it switches
         ['history-segmented-control', 'behavior'],
         ['recently-imported-segmented-control', 'behavior'],
         ['pico8-vis-control', 'behavior'],
@@ -8340,6 +8341,9 @@ function applyTheme(themeName) {
     document.body.classList.toggle('sys-xp', themeName === 'WINDOWS XP');   // light chrome text on the Luna-blue titlebar+rail
     document.body.classList.toggle('theme-light', _isLightBg(tConfig.bg));  // accent hover instead of near-black invert
     applyUiFont();                         // theme's era font wins; otherwise the picker's ui_font
+    // The macOS card is a view of "is the macOS theme the active one", so every route into
+    // applyTheme has to refresh it, including picking CYBERPUNK from the Themes screen.
+    try { syncMacosAppearanceCard(); } catch {}
     window.api.setSetting('clarity_theme', themeName);
     try { localStorage.setItem('clarity_theme_cache', JSON.stringify(tConfig)); } catch(e) {}
 }
@@ -8833,7 +8837,11 @@ let _omarchyThemeName = '';
 // though. They choose the one their desktop is already wearing, so that is the name drawn on
 // it. Falls back to the key on a desktop whose theme has no readable name.
 function themeLabel(key) {
-    return key === OMARCHY_THEME_KEY && _omarchyThemeName ? _omarchyThemeName : key;
+    if (key === OMARCHY_THEME_KEY && _omarchyThemeName) return _omarchyThemeName;
+    // Same reasoning for the macOS entry, and for the same reason it is keyed MACOS rather
+    // than by its label: the label changes under it every time the Mac flips light/dark.
+    if (key === MACOS_THEME_KEY && _macosThemeName) return _macosThemeName;
+    return key;
 }
 
 // The words on the "wear my desktop palette" button. One function because two places set it:
@@ -8929,7 +8937,125 @@ _omarchyThemeReady.then(initOmarchyCard).catch(() => {});
     } catch {}
 })();
 
-_omarchyThemeReady.then(ok => window.api.getSetting('clarity_theme').then(saved => ({ ok, saved })))
+
+// ── The macOS appearance theme ───────────────────────────────────────────────
+// The Mac counterpart to the Omarchy entry above, and built the same way: not a copy of
+// Apple's palette frozen into THEMES, but the colours this Mac is wearing right now, read
+// from System Settings ▸ Appearance in the main process (packages/core/macos-theme.js) and
+// mapped into our theme shape.
+//
+// It is one opt-in entry. Every other theme is untouched and still wins the moment it is
+// picked; this is not a mode the rest of the app has to know about.
+//
+// ⚠️ Registered before the saved theme is read, for the same reason the Omarchy entry is:
+// someone whose saved theme is MACOS would otherwise find THEMES[saved] missing on every
+// start and silently drop back to the default.
+const MACOS_THEME_KEY = 'MACOS';
+let _macosThemeName = '';      // "macOS Dark" / "macOS Light" — changes under the key
+let _macosThemeInfo = null;    // last describe(): mode, accent, accentName
+
+// The theme the user was on before they switched the Mac appearance on, so turning it off
+// puts them back rather than dumping them on the factory default. Persisted, because "off"
+// has to still mean something after a restart.
+const MACOS_PREV_KEY = 'theme_before_macos';
+
+function _registerMacosTheme(d) {
+    if (!d || !d.available || !d.theme) return false;
+    THEMES[MACOS_THEME_KEY] = d.theme;
+    _macosThemeName = d.name || 'macOS';
+    _macosThemeInfo = d;
+    if (!THEME_CATEGORIES['Your Mac']) {
+        // First, like the Omarchy entry: it is the one theme that is about *this* machine.
+        const rebuilt = { 'Your Mac': [MACOS_THEME_KEY], ...THEME_CATEGORIES };
+        Object.keys(THEME_CATEGORIES).forEach(k => delete THEME_CATEGORIES[k]);
+        Object.assign(THEME_CATEGORIES, rebuilt);
+    }
+    return true;
+}
+
+const _macosThemeReady = (window.api.macosTheme ? window.api.macosTheme() : Promise.resolve(null))
+    .then(_registerMacosTheme)
+    .catch(() => false);
+
+// Keep a swatch already on screen in step with a light/dark flip, without rebuilding the grid
+// under the user's cursor.
+// ⚠️ Re-rendered through renderThemesInCategory() rather than patched in place. A light/dark
+// flip changes every colour in the swatch, not just its label, and the swatch markup has one
+// author; reaching in to restyle it here would be a second copy of it to keep in step.
+function refreshMacosSwatch() {
+    if (!document.querySelector(`#theme-grid .theme-swatch[data-theme-key="${MACOS_THEME_KEY}"]`)) return;
+    const active = document.querySelector('#theme-cats .theme-cat-btn.active');
+    renderThemesInCategory(active ? active.textContent : 'Your Mac');
+}
+
+// Following the system. Fires on Light ⇄ Dark (including the automatic flip at sunset on a Mac
+// set to Auto) and on an accent-colour change.
+//
+// ⚠️ Only re-applies when the macOS theme is the active one. Someone who deliberately picked
+// CYBERPUNK does not want their Mac going dark to override it, so the entry is kept current
+// and the swatch relabelled, but nothing is forced.
+window.api.onMacosThemeChanged?.(d => {
+    if (!_registerMacosTheme(d)) return;
+    if (activeTheme === MACOS_THEME_KEY) applyTheme(MACOS_THEME_KEY);
+    refreshMacosSwatch();
+    syncMacosAppearanceCard();
+});
+
+// ── The macOS Appearance card ────────────────────────────────────────────────
+// One Control Panel card, hidden outright on any host that is not a Mac (and on a Mac where
+// the appearance could not be read at all). Its On/Off is a view of one fact — whether the
+// active theme is the macOS one — rather than a second setting that could drift out of step
+// with the Themes screen.
+function syncMacosAppearanceCard() {
+    const card = document.getElementById('macos-appearance-card');
+    if (!card || !THEMES[MACOS_THEME_KEY]) return;
+    const on = activeTheme === MACOS_THEME_KEY;
+    card.querySelectorAll('.macos-follow-btn').forEach(b =>
+        b.classList.toggle('active', (b.dataset.val === 'on') === on));
+
+    const status = document.getElementById('macos-appearance-status');
+    if (!status) return;
+    const d = _macosThemeInfo;
+    const t = THEMES[MACOS_THEME_KEY];
+    if (!d || !t) { status.textContent = ''; return; }
+    const mode = d.mode === 'dark' ? 'Dark' : 'Light';
+    const accent = d.accentName ? `${d.accentName} accent` : 'custom accent';
+    const dot = `<span style="display:inline-block; width:9px; height:9px; border-radius:50%; background:${t.accent}; vertical-align:-1px; margin-right:5px; box-shadow:0 0 0 1px var(--border_solid);"></span>`;
+    status.innerHTML = on
+        ? `${dot}Following your Mac &mdash; <b>${mode}</b>, ${accent}.`
+        : `${dot}Your Mac is currently <b>${mode}</b>, ${accent}.`;
+}
+
+async function initMacosAppearanceCard() {
+    const card = document.getElementById('macos-appearance-card');
+    if (!card) return;
+    if (!THEMES[MACOS_THEME_KEY]) { card.remove(); return; }   // not a Mac, or unreadable
+    card.style.display = '';
+
+    card.querySelectorAll('.macos-follow-btn').forEach(btn => btn.addEventListener('click', async () => {
+        if (btn.dataset.val === 'on') {
+            // Remember where to go back to, but never remember MACOS as the way back.
+            if (activeTheme !== MACOS_THEME_KEY) {
+                try { await window.api.setSetting(MACOS_PREV_KEY, activeTheme); } catch {}
+            }
+            applyTheme(MACOS_THEME_KEY);
+        } else {
+            if (activeTheme !== MACOS_THEME_KEY) return;       // already off; nothing to undo
+            let back = null;
+            try { back = await window.api.getSetting(MACOS_PREV_KEY); } catch {}
+            applyTheme(back && THEMES[back] && back !== MACOS_THEME_KEY ? back : 'MOCHA');
+        }
+        syncMacosAppearanceCard();   // applyTheme already called this; harmless and keeps
+                                     // the card right when the Off branch returned early.
+    }));
+
+    syncMacosAppearanceCard();
+}
+
+_macosThemeReady.then(initMacosAppearanceCard).catch(() => {});
+
+Promise.all([_omarchyThemeReady, _macosThemeReady])
+    .then(([ok]) => window.api.getSetting('clarity_theme').then(saved => ({ ok, saved })))
     .then(({ ok, saved }) => {
     // On Omarchy, matching the desktop is the better default, but only as a *default*.
     // A saved theme is a deliberate choice and always wins, so this fires on a fresh

@@ -305,15 +305,46 @@ window.api.onOmarchyThemeChanged?.(d => {
   if (registerOmarchyTheme(d) && activeTheme === OMARCHY_THEME_KEY) applyTheme(OMARCHY_THEME_KEY);
 });
 
+// The same arrangement for the Mac, and registered here for exactly the same reason: on a Mac
+// following System Settings the Manager is wearing 'MACOS', which is not a shipped theme, so
+// without this mapManagerThemeToCouch() would find nothing and the couch face would drop back
+// to its own default while the Manager matched the system.
+const MACOS_THEME_KEY = 'MACOS';
+function registerMacosTheme(d) {
+  if (!d || !d.available || !d.theme) return false;
+  THEMES[MACOS_THEME_KEY] = d.theme;
+  // Offered in Couch's own picker as well, not only through FOLLOW THE MANAGER: a couch on a
+  // Mac should be able to follow the system without the Manager having to be set to it too.
+  //
+  // ⚠️ Listed under its key rather than under "macOS Dark"/"macOS Light". This overlay reads
+  // the choice straight back out of the row it drew (`String(action).replace("★ ", "")`), so a
+  // display name that differs from the key would select a theme that does not exist. The
+  // Manager's grid can afford the prettier label because it carries a data-theme-key.
+  if (!THEME_CATEGORIES['Your Mac']) {
+    const rebuilt = { 'Your Mac': [MACOS_THEME_KEY], ...THEME_CATEGORIES };
+    Object.keys(THEME_CATEGORIES).forEach(k => delete THEME_CATEGORIES[k]);
+    Object.assign(THEME_CATEGORIES, rebuilt);
+  }
+  return true;
+}
+const macosThemeReady = (window.api.macosTheme ? window.api.macosTheme() : Promise.resolve(null))
+  .then(registerMacosTheme).catch(() => false);
+
+// Light ⇄ Dark (including the automatic flip at sunset) and accent changes, without a restart.
+window.api.onMacosThemeChanged?.(d => {
+  if (registerMacosTheme(d) && activeTheme === MACOS_THEME_KEY) applyTheme(MACOS_THEME_KEY);
+});
+
 function mapManagerThemeToCouch(name) {
   if (!name) return null;
   if (name === 'Couch') return 'Couch (DEFAULT)';
   return THEMES[name] ? name : null;
 }
 async function resolveAndApplyTheme() {
-  // ⚠️ Wait for the Omarchy palette to be registered first: this runs on startup, and a
-  // race here means 'OMARCHY' is not in THEMES yet and the mirror falls back on first paint.
-  try { await omarchyThemeReady; } catch (e) {}
+  // ⚠️ Wait for the generated palettes to be registered first: this runs on startup, and a
+  // race here means 'OMARCHY' / 'MACOS' is not in THEMES yet and the mirror falls back on
+  // first paint.
+  try { await Promise.all([omarchyThemeReady, macosThemeReady]); } catch (e) {}
   if ((audioCfg.themeSource || 'CUSTOM') === 'MANAGER') {
     try {
       const mapped = mapManagerThemeToCouch(await window.api.getSetting('clarity_theme'));
