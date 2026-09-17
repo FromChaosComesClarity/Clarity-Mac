@@ -7886,8 +7886,12 @@ modalTools.addEventListener('click', e => { if (e.target === modalTools) closeTo
         ['btn-tools-add-game', 'library'],
         ['btn-scan-updates', 'library'],
         ['btn-scan-genres', 'library'],
+        // First in Appearance, above the theme picker it overrides: this is the system-level
+        // choice that governs the rest, the way Appearance sits at the top of System Settings.
+        // ⚠️ Cards are appended in THIS order, so listing it after the theme card put it at
+        // y=570 — on screen, but below the fold, which reads as missing.
+        ['macos-appearance-card', 'appearance'],
         ['btn-theme-switch', 'appearance'],
-        ['macos-appearance-card', 'appearance'],   // sits with the Themes screen it switches
         ['history-segmented-control', 'behavior'],
         ['recently-imported-segmented-control', 'behavior'],
         ['pico8-vis-control', 'behavior'],
