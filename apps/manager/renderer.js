@@ -8294,6 +8294,11 @@ const THEMES = {
     "SOLARIS CDE": {bg: "#aeb6c2", bg_panel: "rgba(188, 196, 208, 0.6)", bg_menu: "#bcc4d0", accent: "#33518a", accent_menu: "#33518a", text_main: "#000000", text_sec: "#2a2c2f", text_dim: "#494c51", border: "rgba(51, 81, 138, 0.25)", border_solid: "#767c84", font: 'Inter'},
     "RISC OS": {bg: "#d7d7c8", bg_panel: "rgba(232, 232, 220, 0.6)", bg_menu: "#e8e8dc", accent: "#005a9c", accent_menu: "#005a9c", text_main: "#000000", text_sec: "#343430", text_dim: "#5a5a54", border: "rgba(0, 90, 156, 0.25)", border_solid: "#929288", font: 'Inter'},
     "GEOS": {bg: "#ffffff", bg_panel: "rgba(255, 255, 255, 0.6)", bg_menu: "#ffffff", accent: "#000000", accent_menu: "#000000", text_main: "#000000", text_sec: "#3d3d3d", text_dim: "#6b6b6b", border: "rgba(0, 0, 0, 0.25)", border_solid: "#adadad", font: 'Chicago'},
+    // Mac OS X 10.0 Cheetah / 10.1 Puma. The palette alone does not make Aqua — the
+    // pinstripes, the gel and the blue lozenge live in `body.sys-aqua` in index.html, hung on
+    // the same hook the Windows XP theme uses. Lucida Grande ships with macOS, so the era
+    // font needs no @font-face of its own.
+    "AQUA": {bg: "#eef2f8", bg_panel: "rgba(255, 255, 255, 0.78)", bg_menu: "#d5dde9", accent: "#3875d7", accent_menu: "#3875d7", text_main: "#000000", text_sec: "#39424f", text_dim: "#6d7889", border: "rgba(56, 117, 215, 0.24)", border_solid: "#97a3b5", font: 'Lucida Grande'},
 };
 
 const THEME_CATEGORIES = {
@@ -8306,7 +8311,7 @@ const THEME_CATEGORIES = {
     "Sci-Fi Universes": ["N7", "TRON LEGACY", "DEAD SPACE", "COLONY SHIP", "NECROMORPH"],
     "Horror Realm": ["CRIMSON PEAK", "LAKESIDE CURSE", "THE BACKROOMS"],
     "PSIII Colors": ["PSIII CLASSIC", "PSIII RED", "PSIII GREEN", "PSIII BLUE", "PSIII PURPLE", "PSIII GOLD", "PSIII SILVER"],
-    "Systems": ["MS-DOS", "COMMODORE 64", "MACOS 1.0", "CLASSIC MACOS", "WINDOWS 95", "AMIGA WORKBENCH", "WINDOWS XP", "BEOS", "NEXTSTEP", "ZX SPECTRUM", "ATARI ST", "AMBER CRT", "GREEN CRT", "TELETEXT", "WINDOWS 3.1", "OS/2 WARP", "IBM 3270", "SOLARIS CDE", "RISC OS", "GEOS"]
+    "Systems": ["MS-DOS", "COMMODORE 64", "MACOS 1.0", "CLASSIC MACOS", "AQUA", "WINDOWS 95", "AMIGA WORKBENCH", "WINDOWS XP", "BEOS", "NEXTSTEP", "ZX SPECTRUM", "ATARI ST", "AMBER CRT", "GREEN CRT", "TELETEXT", "WINDOWS 3.1", "OS/2 WARP", "IBM 3270", "SOLARIS CDE", "RISC OS", "GEOS"]
 };
 
 let activeTheme = "MOCHA";   // default color scheme (BrewBalance · Mocha)
@@ -8343,6 +8348,7 @@ function applyTheme(themeName) {
     activeTheme = themeName;
     try { applyOmarchyGeometry(themeName === OMARCHY_THEME_KEY); } catch {}
     document.body.classList.toggle('sys-xp', themeName === 'WINDOWS XP');   // light chrome text on the Luna-blue titlebar+rail
+    document.body.classList.toggle('sys-aqua', themeName === 'AQUA');       // pinstripes, gel buttons, blue scrollbars
     document.body.classList.toggle('theme-light', _isLightBg(tConfig.bg));  // accent hover instead of near-black invert
     applyUiFont();                         // theme's era font wins; otherwise the picker's ui_font
     // The macOS card is a view of "is the macOS theme the active one", so every route into
