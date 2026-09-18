@@ -468,13 +468,32 @@ function findNativeGameExe(gameDir) {
 // self-reference ('.') rather than a name, so resolvedExe's path.join(install_path, executable)
 // still lands on the bundle. launchNative's `open -n` then resolves the real binary through
 // the bundle's own Info.plist (CFBundleExecutable), exactly as GOG's own installer would.
+//
+// ⚠️ That is the common shape, not the only one. Some GOG macOS packages arrive WRAPPED: a
+// per-game folder holding the .app, a start.command that does nothing but `open` it, and the
+// folder's own Contents/Resources/goggame-<appId>.info, with no .info inside the bundle at
+// all. The Witcher: Enhanced Edition is one (checked against a real install). Looking only
+// inside the bundle meant a complete, playable 14 GB install was reported as a failure and
+// left unregistered. In the wrapped shape install_path is the wrapper, not the bundle: the
+// .info inside it proves it belongs to this one game, so it is as safe to remove whole, and
+// removing only the bundle would orphan the rest. The .app is the executable rather than
+// start.command, because `open -n` on the bundle is what the script does anyway.
 function findNativeInstallResult(gameDir, appId) {
-    const isApp = /\.app$/i.test(gameDir);
-    const bundle = isApp ? gameDir : (() => { const a = findNativeGameExe(gameDir); return a ? path.join(gameDir, a) : null; })();
-    if (!bundle) return null;
-    const infoFile = path.join(bundle, 'Contents', 'Resources', `goggame-${appId}.info`);
-    if (!fs.existsSync(infoFile)) return null;
-    return { install_path: bundle, executable: '.' };
+    const info = `goggame-${appId}.info`;
+    if (/\.app$/i.test(gameDir)) {
+        return fs.existsSync(path.join(gameDir, 'Contents', 'Resources', info))
+            ? { install_path: gameDir, executable: '.' } : null;
+    }
+    const app = findNativeGameExe(gameDir);
+    if (!app) return null;
+    const bundle = path.join(gameDir, app);
+    if (fs.existsSync(path.join(bundle, 'Contents', 'Resources', info))) {
+        return { install_path: bundle, executable: '.' };
+    }
+    if (/\.app$/i.test(app) && fs.existsSync(path.join(gameDir, 'Contents', 'Resources', info))) {
+        return { install_path: gameDir, executable: app };
+    }
+    return null;
 }
 
 // ── DOSBox for GOG's DOS games ───────────────────────────────────────────────

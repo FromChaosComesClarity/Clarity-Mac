@@ -730,14 +730,17 @@ function gogCatalogPlatforms(item) {
 function gogPlayTaskList(game) {
     if (!game || game.store !== 'gog' || !game.install_path || !game.app_id) return [];
     const installPath = expandTilde(game.install_path);
-    // On macOS install_path IS the .app bundle (see platform/darwin.js), and GOG nests the
-    // .info file inside it rather than at the install root the way Windows/Linux get it.
-    const infoRel = /\.app$/i.test(installPath)
-        ? path.join('Contents', 'Resources', `goggame-${game.app_id}.info`)
-        : `goggame-${game.app_id}.info`;
-    const infoFile = resolvePathCaseInsensitive(path.join(installPath, infoRel));
+    // Windows and Linux get the .info at the install root. On macOS GOG nests it in a
+    // Contents/Resources: inside the .app when install_path is the bundle, and in the wrapper
+    // folder's own Contents/Resources for the wrapped packages (see findNativeInstallResult
+    // in platform/darwin.js). Root first, then the nested spot, whichever exists.
+    const infoName = `goggame-${game.app_id}.info`;
     let info;
-    try { info = JSON.parse(fs.readFileSync(infoFile, 'utf8')); } catch { return []; }
+    for (const rel of [infoName, path.join('Contents', 'Resources', infoName)]) {
+        try { info = JSON.parse(fs.readFileSync(resolvePathCaseInsensitive(path.join(installPath, rel)), 'utf8')); break; }
+        catch {}
+    }
+    if (!info) return [];
 
     return (info.playTasks || [])
         .map((t, index) => ({ t, index }))
