@@ -683,8 +683,38 @@
             radial-gradient(circle at 50% 120%, rgba(236,252,214,0.70) 0%, rgba(255,255,255,0) 42%),
             radial-gradient(circle at 50% 50%, rgba(255,255,255,0) 50%, rgba(44,92,20,0.55) 92%, rgba(28,66,10,0.85) 100%),
             linear-gradient(to bottom, #e5ede5 0%, #8dbe66 22%, #74ba36 40%, #9ede62 62%, #bdfa7f 82%, #d6ff98 100%); }
-    /* Aqua lit these up as the pointer neared the group; brightening in place keeps that
-       without inventing the glyphs, which 10.0 only drew on rollover anyway. */
+    /* Aqua lit these up as the pointer neared the group, and drew the glyphs on rollover.
+       Both halves are here: the brightening, and x / - / + appearing underneath the glass.
+
+       ⚠️ The glyph is ::before, never ::after. ::after is the specular gloss, and in Aqua the
+       symbol sits UNDER that highlight rather than on top of it; swapping them puts a crisp
+       glyph over the shine and the sphere flattens out. Source order does the layering, so
+       ::before needs no z-index to land below ::after.
+
+       ⚠️ Hovering ANY of the three reveals ALL three, which is what the real thing did and
+       what macOS still does. :has on the titlebar expresses that, but the row is not a
+       container of only these buttons, it also carries Home / Library / Downloads, so the
+       :has is scoped to .win-btn and hovering Home leaves the lights alone. The plain
+       :hover rule below is not redundant: it keeps the hovered button's own glyph if :has
+       ever fails to match.
+
+       The colour is a dark graphite at partial alpha, not black: these are read through
+       tinted glass, and solid black reads as a sticker on top of the sphere. font-size is
+       set explicitly because the button itself is font-size: 0 to hide its label text. */
+    body.sys-aqua .titlebar-controls .win-btn::before {
+        content: ''; position: absolute; inset: 0;
+        display: flex; align-items: center; justify-content: center;
+        font-family: 'Lucida Grande', -apple-system, sans-serif;
+        font-size: 11px; line-height: 1; font-weight: 600;
+        color: rgba(0,0,0,0.58);
+        opacity: 0; transition: opacity 0.12s ease;
+        pointer-events: none;
+    }
+    body.sys-aqua #btn-close::before { content: '\00d7'; font-size: 13px; }   /* multiplication sign, not a letter x */
+    body.sys-aqua #btn-min::before   { content: '\2212'; font-size: 12px; }   /* minus sign, wider than a hyphen */
+    body.sys-aqua #btn-max::before   { content: '+'; }
+    body.sys-aqua #titlebar:has(.titlebar-controls .win-btn:hover) .win-btn::before,
+    body.sys-aqua .titlebar-controls .win-btn:hover::before { opacity: 1; }
     body.sys-aqua .titlebar-controls .win-btn:hover { filter: brightness(1.12) saturate(1.15); background-color: transparent; }
     body.sys-aqua .titlebar-controls .win-btn:active { filter: brightness(0.9); }
     /* The window's own name sat clear of them; the reserved gap is already there for the
