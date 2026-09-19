@@ -223,6 +223,10 @@ contextBridge.exposeInMainWorld('api', {
                                 omarchyTheme:    () => ipcRenderer.invoke('omarchy-theme'),
                                 // Fires when the user runs `omarchy theme set`, so the app can follow.
                                 onOmarchyThemeChanged: (cb) => ipcRenderer.on('omarchy-theme-changed', (_e, d) => cb(d)),
+                                macosTheme:      () => ipcRenderer.invoke('macos-theme'),
+                                // Fires on System Settings ▸ Appearance: Light/Dark (including the
+                                // Auto flip at sunset) and the accent colour.
+                                onMacosThemeChanged: (cb) => ipcRenderer.on('macos-theme-changed', (_e, d) => cb(d)),
                                 customFolderPick: (title) => ipcRenderer.invoke('custom-folder-pick', title),
                                 customFolderScan: (folder) => ipcRenderer.invoke('custom-folder-scan', folder),
                                 customFolderAdd:  (payload) => ipcRenderer.invoke('custom-folder-add', payload),
@@ -280,5 +284,7 @@ contextBridge.exposeInMainWorld('api', {
                                 // told the state rather than tracking it.
                                 onFullscreenChanged: cb => ipcRenderer.on('window-fullscreen-changed', (_e, on) => cb(on)),
                                 maximizeApp: () => ipcRenderer.send('window-maximize'),
-                                closeApp: () => ipcRenderer.send('window-close')
+                                closeApp: () => ipcRenderer.send('window-close'),
+                                // Aqua only: hand the traffic lights to the page, or give them back.
+                                aquaWindowButtons: (ours) => ipcRenderer.send('aqua-window-buttons', !!ours)
 });

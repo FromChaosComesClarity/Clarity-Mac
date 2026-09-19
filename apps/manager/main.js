@@ -3598,6 +3598,19 @@ ipcMain.on('window-maximize', () => {
 });
 ipcMain.on('window-close', () => { const win = BrowserWindow.getFocusedWindow(); if(win) win.close(); });
 
+// Aqua draws its own traffic lights, so the system's have to get out of the way. macOS only:
+// setWindowButtonVisibility does not exist elsewhere, and elsewhere the custom row is already
+// the only one there is.
+//
+// ⚠️ Sent by the renderer on every theme change, not just when turning Aqua on, so leaving the
+// theme always restores the real buttons. A window showing neither set would be a window the
+// user cannot close from the titlebar.
+ipcMain.on('aqua-window-buttons', (e, ours) => {
+    if (process.platform !== 'darwin') return;
+    const win = BrowserWindow.fromWebContents(e.sender);
+    try { win && win.setWindowButtonVisibility(!ours); } catch {}
+});
+
 const STEAM_LANG_MAP = { en: 'english', pt_BR: 'brazilian' };
 async function fetchDescI18n(appId, enDesc) {
     const lang = db?.prepare("SELECT value FROM settings WHERE key='language'").get()?.value || 'en';

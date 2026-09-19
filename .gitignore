@@ -1,4 +1,4 @@
-node_modules/
+node_modules
 dist/
 # Build output copied aside, e.g. dist-macos-appearance/. Release artifacts are hundreds of MB,
 # over GitHub's 100 MB limit, so one committed by accident blocks every push after it.

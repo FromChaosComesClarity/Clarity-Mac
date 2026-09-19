@@ -226,6 +226,10 @@ const THEMES = {
   "SOLARIS CDE": {bg: "#aeb6c2", bg_panel: "rgba(188, 196, 208, 0.6)", bg_menu: "#bcc4d0", accent: "#33518a", accent_menu: "#33518a", text_main: "#000000", text_sec: "#2a2c2f", text_dim: "#494c51", border: "rgba(51, 81, 138, 0.25)", border_solid: "#767c84", font: 'Inter'},
   "RISC OS": {bg: "#d7d7c8", bg_panel: "rgba(232, 232, 220, 0.6)", bg_menu: "#e8e8dc", accent: "#005a9c", accent_menu: "#005a9c", text_main: "#000000", text_sec: "#343430", text_dim: "#5a5a54", border: "rgba(0, 90, 156, 0.25)", border_solid: "#929288", font: 'Inter'},
   "GEOS": {bg: "#ffffff", bg_panel: "rgba(255, 255, 255, 0.6)", bg_menu: "#ffffff", accent: "#000000", accent_menu: "#000000", text_main: "#000000", text_sec: "#3d3d3d", text_dim: "#6b6b6b", border: "rgba(0, 0, 0, 0.25)", border_solid: "#adadad", font: 'Chicago'},
+  // Mac OS X 10.0 Cheetah / 10.1 Puma. The desktop face also carries Aqua's pinstripes and
+  // gel buttons in CSS; here it is the palette alone, because this face has no titlebar, no
+  // rail and no pointer to glow under — the chrome Aqua is made of does not exist on a TV.
+  "AQUA": {bg: "#f2f2f2", bg_panel: "rgba(255, 255, 255, 0.80)", bg_menu: "#e6e6e6", accent: "#1464c8", accent_menu: "#1464c8", text_main: "#000000", text_sec: "#3a3a3a", text_dim: "#6e6e6e", border: "rgba(20, 100, 200, 0.22)", border_solid: "#b4b4b4", font: 'Lucida Grande'},
 };
 const THEME_CATEGORIES = {
   "Originals & System": ["Couch (DEFAULT)", "DARK GRAY", "CYBERPUNK", "SNOW", "MOVIESFLIX", "VAPOUR OS", "PSIV BLUE", "GREEN BOX", "OAKANIZER DARK"],
@@ -237,7 +241,7 @@ const THEME_CATEGORIES = {
   "Sci-Fi Universes": ["N7", "TRON LEGACY", "DEAD SPACE", "COLONY SHIP", "NECROMORPH"],
   "Horror Realm": ["CRIMSON PEAK", "LAKESIDE CURSE", "THE BACKROOMS"],
   "PSIII Colors": ["PSIII CLASSIC", "PSIII RED", "PSIII GREEN", "PSIII BLUE", "PSIII PURPLE", "PSIII GOLD", "PSIII SILVER"],
-  "Systems": ["MS-DOS", "COMMODORE 64", "MACOS 1.0", "CLASSIC MACOS", "WINDOWS 95", "AMIGA WORKBENCH", "WINDOWS XP", "BEOS", "NEXTSTEP", "ZX SPECTRUM", "ATARI ST", "AMBER CRT", "GREEN CRT", "TELETEXT", "WINDOWS 3.1", "OS/2 WARP", "IBM 3270", "SOLARIS CDE", "RISC OS", "GEOS"]
+  "Systems": ["MS-DOS", "COMMODORE 64", "MACOS 1.0", "CLASSIC MACOS", "AQUA", "WINDOWS 95", "AMIGA WORKBENCH", "WINDOWS XP", "BEOS", "NEXTSTEP", "ZX SPECTRUM", "ATARI ST", "AMBER CRT", "GREEN CRT", "TELETEXT", "WINDOWS 3.1", "OS/2 WARP", "IBM 3270", "SOLARIS CDE", "RISC OS", "GEOS"]
 };
 
 function updateAppScale() { const wrapper = document.getElementById('app-scale-wrapper'); if (!wrapper) return; const scaleX = window.innerWidth / 1920; const scaleY = window.innerHeight / 1080; const scale = Math.min(scaleX, scaleY); wrapper.style.transform = `scale(${scale})`; wrapper.style.left = `${(window.innerWidth - (1920 * scale)) / 2}px`; wrapper.style.top = `${(window.innerHeight - (1080 * scale)) / 2}px`; } window.addEventListener('resize', updateAppScale);
@@ -305,15 +309,46 @@ window.api.onOmarchyThemeChanged?.(d => {
   if (registerOmarchyTheme(d) && activeTheme === OMARCHY_THEME_KEY) applyTheme(OMARCHY_THEME_KEY);
 });
 
+// The same arrangement for the Mac, and registered here for exactly the same reason: on a Mac
+// following System Settings the Manager is wearing 'MACOS', which is not a shipped theme, so
+// without this mapManagerThemeToCouch() would find nothing and the couch face would drop back
+// to its own default while the Manager matched the system.
+const MACOS_THEME_KEY = 'MACOS';
+function registerMacosTheme(d) {
+  if (!d || !d.available || !d.theme) return false;
+  THEMES[MACOS_THEME_KEY] = d.theme;
+  // Offered in Couch's own picker as well, not only through FOLLOW THE MANAGER: a couch on a
+  // Mac should be able to follow the system without the Manager having to be set to it too.
+  //
+  // ⚠️ Listed under its key rather than under "macOS Dark"/"macOS Light". This overlay reads
+  // the choice straight back out of the row it drew (`String(action).replace("★ ", "")`), so a
+  // display name that differs from the key would select a theme that does not exist. The
+  // Manager's grid can afford the prettier label because it carries a data-theme-key.
+  if (!THEME_CATEGORIES['Your Mac']) {
+    const rebuilt = { 'Your Mac': [MACOS_THEME_KEY], ...THEME_CATEGORIES };
+    Object.keys(THEME_CATEGORIES).forEach(k => delete THEME_CATEGORIES[k]);
+    Object.assign(THEME_CATEGORIES, rebuilt);
+  }
+  return true;
+}
+const macosThemeReady = (window.api.macosTheme ? window.api.macosTheme() : Promise.resolve(null))
+  .then(registerMacosTheme).catch(() => false);
+
+// Light ⇄ Dark (including the automatic flip at sunset) and accent changes, without a restart.
+window.api.onMacosThemeChanged?.(d => {
+  if (registerMacosTheme(d) && activeTheme === MACOS_THEME_KEY) applyTheme(MACOS_THEME_KEY);
+});
+
 function mapManagerThemeToCouch(name) {
   if (!name) return null;
   if (name === 'Couch') return 'Couch (DEFAULT)';
   return THEMES[name] ? name : null;
 }
 async function resolveAndApplyTheme() {
-  // ⚠️ Wait for the Omarchy palette to be registered first: this runs on startup, and a
-  // race here means 'OMARCHY' is not in THEMES yet and the mirror falls back on first paint.
-  try { await omarchyThemeReady; } catch (e) {}
+  // ⚠️ Wait for the generated palettes to be registered first: this runs on startup, and a
+  // race here means 'OMARCHY' / 'MACOS' is not in THEMES yet and the mirror falls back on
+  // first paint.
+  try { await Promise.all([omarchyThemeReady, macosThemeReady]); } catch (e) {}
   if ((audioCfg.themeSource || 'CUSTOM') === 'MANAGER') {
     try {
       const mapped = mapManagerThemeToCouch(await window.api.getSetting('clarity_theme'));
