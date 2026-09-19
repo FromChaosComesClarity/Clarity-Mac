@@ -710,7 +710,13 @@
         opacity: 0; transition: opacity 0.12s ease;
         pointer-events: none;
     }
-    body.sys-aqua #btn-close::before { content: '\00d7'; font-size: 13px; }   /* multiplication sign, not a letter x */
+    /* The -1.25px is measured, not taste: with line-height 1 the line box centres, but the
+       INK does not, because the font's ascent and descent are not symmetric about it. Canvas
+       metrics put this glyph's ink centre at 7.74px in a 13px button, so it needs 1.24px up.
+       The other two measure ~1.0 and ~1.3px low by the same method and are left alone: a
+       minus is a 1px bar and a plus is small enough that neither reads as off-centre, and
+       moving them on arithmetic alone would break what already looks right. */
+    body.sys-aqua #btn-close::before { content: '\00d7'; font-size: 13px; transform: translateY(-1.25px); }   /* multiplication sign, not a letter x */
     body.sys-aqua #btn-min::before   { content: '\2212'; font-size: 12px; }   /* minus sign, wider than a hyphen */
     body.sys-aqua #btn-max::before   { content: '+'; }
     body.sys-aqua #titlebar:has(.titlebar-controls .win-btn:hover) .win-btn::before,
