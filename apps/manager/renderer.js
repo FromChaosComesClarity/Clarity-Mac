@@ -1398,12 +1398,16 @@ async function openInstallerInstall(game) {
         // silently default the size lookup to Windows (gogInstallInfo's own `platform ||
         // 'windows'` fallback), showing the wrong download size for a game with no Windows
         // build at all.
-        const [info, free] = await Promise.all([
+        let [info, free] = await Promise.all([
             window.api.getInstallSize(gid, selectedPlatform).catch(() => null),
             window.api.getDiskSpace($('gi-dir').value).catch(() => null),
         ]);
         const val = v => `<b style="color:var(--text_main)">${fmtB(v)}</b>`;
         const parts = [];
+        // An Epic lookup that failed says why (see epicInstallInfo) rather than arriving as
+        // null; it is still "no size" for everything below, sign-in check included.
+        const why = info && info.unavailable ? info.reason : '';
+        if (why) info = null;
         if (info?.download_size) parts.push(`Download ${val(info.download_size)}`);
         if (info?.disk_size)     parts.push(`On disk ${val(info.disk_size)}`);
         const need = info?.disk_size || info?.download_size || 0;
@@ -1419,6 +1423,8 @@ async function openInstallerInstall(game) {
             return;
         }
         setSignInMode(false);
+        // Free space alone used to look like a complete answer. Say the size is missing, and why.
+        if (!info) parts.unshift(`<span style="color:var(--text_dim)">Size unavailable${why ? `: ${escHtml(why)}` : ''}</span>`);
         el.innerHTML = parts.length ? parts.join(' &nbsp;·&nbsp; ') : 'Size info unavailable';
     };
 

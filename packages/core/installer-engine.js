@@ -2542,24 +2542,48 @@ async function epicListUpdates() {
 // ⚠️ For a named platform. With none, legendary on macOS asks about the MAC build, and for a
 // Windows-only game there is none: "Asset information ... is missing", and no size at all.
 // Measured on Alan Wake 2: nothing without --platform, 97.88 GiB to download with Windows.
+//
+// ⚠️ Bounded, retried once, and explained when it fails. In the field the install dialog sat on
+// "Checking size & free space..." for two minutes for one game, and showed only the free space
+// for another, while the same calls answered in four seconds when run again from inside the
+// app. Whatever legendary was doing then (it reaches Epic's servers for the manifest), the
+// dialog must not wait on it forever or fail without a word. So: 30s per attempt, a second
+// attempt if the first gives nothing, and on failure an object saying why instead of null,
+// plus legendary's own output written to logDir so the next one can be diagnosed.
 async function epicInstallInfo(appName, platform) {
-    const leg = findLegendary(); if (!leg) return null;
+    const leg = findLegendary(); if (!leg) return { unavailable: true, reason: 'legendary was not found' };
     if (!platform) {
         try { const row = db?.prepare("SELECT platform, platforms FROM games WHERE app_id=? AND store='epic'").get(appName); platform = row?.platform || epicDefaultPlatform(row?.platforms); } catch {}
     }
-    return new Promise(resolve => {
-        let out = '';
-        const proc = spawn(leg, ['info', appName, '--platform', legendaryPlatformArg(platform)], { stdio: ['ignore', 'pipe', 'pipe'] });
+    const args = ['info', appName, '--platform', legendaryPlatformArg(platform)];
+    const attempt = () => new Promise(resolve => {
+        let out = '', timedOut = false;
+        const proc = spawn(leg, args, { stdio: ['ignore', 'pipe', 'pipe'] });
+        const timer = setTimeout(() => { timedOut = true; try { proc.kill('SIGKILL'); } catch {} }, 30000);
         proc.stdout.on('data', d => out += d);
         proc.stderr.on('data', d => out += d);
-        proc.on('close', () => {
+        proc.on('close', code => {
+            clearTimeout(timer);
             const toBytes = (n, u) => { const v = parseFloat(n); return u.toLowerCase().startsWith('g') ? v*1024**3 : u.toLowerCase().startsWith('m') ? v*1024**2 : v*1024; };
             const dl   = out.match(/Download size[^:]*:\s*([\d.]+)\s*(\w+)/i);
             const disk = out.match(/Disk size[^:]*:\s*([\d.]+)\s*(\w+)/i);
-            resolve(dl && disk ? { download_size: toBytes(dl[1], dl[2]), disk_size: toBytes(disk[1], disk[2]) } : null);
+            if (dl && disk) return resolve({ ok: true, info: { download_size: toBytes(dl[1], dl[2]), disk_size: toBytes(disk[1], disk[2]) } });
+            const said = (out.match(/(?:ERROR|WARNING|CRITICAL)[^\n]*/i) || [''])[0].replace(/^[^:]*:\s*/, '').trim();
+            resolve({ ok: false, out, code, reason: timedOut ? 'Epic did not answer within 30 seconds' : (said || `legendary exited with code ${code}`) });
         });
-        proc.on('error', () => resolve(null));
+        proc.on('error', e => { clearTimeout(timer); resolve({ ok: false, out, reason: e.message }); });
     });
+    let r = await attempt();
+    if (!r.ok) r = await attempt();
+    if (r.ok) return r.info;
+    try {
+        if (logDir) {
+            fs.mkdirSync(logDir, { recursive: true });
+            fs.writeFileSync(path.join(logDir, `epic-size-${appName}.log`),
+                `${new Date().toISOString()}\n$ legendary ${args.join(' ')}\n${r.reason}\n\n${r.out || ''}`);
+        }
+    } catch {}
+    return { unavailable: true, reason: r.reason };
 }
 
 module.exports = {
