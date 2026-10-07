@@ -916,6 +916,29 @@ async function regQueryCommand({ prefix, runtimePath, key, valueName }) {
     };
 }
 
+// Waits for the bottle's wineserver to exit, so the next program starts a fresh Wine session.
+//
+// Needed when a setting is only read once per session. Wine's drive manager (mountmgr) reads
+// HKLM\Software\Wine\Drives when the session starts, so a drive type written by regedit
+// while that session is still up is invisible to anything launched inside it. Measured on a
+// fresh bottle with Road Rash: launched straight after the write, GetDriveTypeW("D:/") -> 3,
+// a fixed disk, and the game says "Could not find any CD-ROM drive"; launched once the
+// session had ended, -> 5, a CD-ROM, and it plays.
+//
+// `wineserver -w` waits for the server to leave of its own accord, which it does a few
+// seconds after its last process. Returned as a command like regeditCommand so the caller
+// owns the timeout; WINEPREFIX is what makes CrossOver's wineserver address this bottle's
+// server rather than another one's.
+function waitServerCommand({ prefix, runtimePath, kill = false }) {
+    const wine = usableRuntimePath(runtimePath);
+    if (!wine) throw unavailableError();
+    return {
+        cmd: path.join(path.dirname(wine), 'wineserver'),
+        args: [kill ? '-k' : '-w'],
+        env: { ...process.env, CX_BOTTLE_PATH: path.dirname(prefix), WINEPREFIX: prefix },
+    };
+}
+
 // z: maps to / exactly like Linux/vanilla Wine, confirmed against a real bottle's
 // dosdevices/ (CrossOver additionally maps y: to $HOME, unused here).
 function toWindowsPath(p) { return ('Z:' + p).replace(/\//g, '\\'); }
@@ -951,7 +974,7 @@ const runtime = {
     resolve: resolveRuntime,
     isRuntimeDir,
     inUse, canRun, assertAvailable,
-    compatEnv, buildLaunch, buildRedistLaunch, regeditCommand, regQueryCommand,
+    compatEnv, buildLaunch, buildRedistLaunch, regeditCommand, regQueryCommand, waitServerCommand,
     toWindowsPath, diagnose, unavailableError,
     // Not wired up, CrossOver 26 advertises its own BattlEye/EAC support built
     // into the engine itself, unverified here against a real anti-cheat title, and

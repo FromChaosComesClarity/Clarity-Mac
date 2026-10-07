@@ -1410,6 +1410,29 @@ async function applyRoadRashFix(installPath, prefix, proton) {
         proc.on('close', () => { clearTimeout(timer); finish(); });
         proc.on('error', () => { clearTimeout(timer); finish(); });
     });
+
+    /*
+     * ⚠️ The drive type only takes effect in the NEXT Wine session. Wine's drive manager reads
+     * HKLM\Software\Wine\Drives once, when the session starts, and the session regedit just
+     * ran in is still up. The game launched straight into it sees D: as a fixed disk and stops
+     * at "Could not find any CD-ROM drive", while every launch after the first works, which
+     * is the worst kind of bug: it only ever happens to someone trying it for the first time.
+     * Measured on a fresh bottle: GetDriveTypeW("D:/") -> 3 straight after the write, -> 5
+     * once the session had ended. So when the drive was written, wait for the session to end
+     * before the game starts. It ends by itself a few seconds after its last process; if it
+     * has not within 20s, it is stopped, which is safe because this bottle is Road Rash's own
+     * and nothing else runs in it.
+     */
+    if (needDrive && typeof host.runtime.waitServerCommand === 'function') {
+        const run = (spec, ms) => new Promise(resolve => {
+            const proc = spawn(spec.cmd, spec.args, { env: spec.env, stdio: 'ignore' });
+            const timer = setTimeout(() => { try { proc.kill('SIGKILL'); } catch {} resolve(false); }, ms);
+            proc.on('close', code => { clearTimeout(timer); resolve(code === 0); });
+            proc.on('error', () => { clearTimeout(timer); resolve(false); });
+        });
+        const ended = await run(host.runtime.waitServerCommand({ prefix, runtimePath: proton }), 20000);
+        if (!ended) await run(host.runtime.waitServerCommand({ prefix, runtimePath: proton, kill: true }), 10000);
+    }
 }
 
 // ── Recipe: a Wine virtual desktop for a game that mode-switches ──────────────
