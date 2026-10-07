@@ -645,6 +645,29 @@ const RECIPES = [
     // paks (uzdoom.pk3, game_support.pk3, lights.pk3 and the rest), and handing one of those to
     // a running engine makes it abort before the title screen: "File uzdoom.pk3 is overriding
     // core lump engine/commonbinds.txt."
+    // Native UZDoom, the engine DOOM 64 CE runs on here. Upstream publishes an Apple Silicon
+    // build of every release, signed by the UZDoom team, so this is the project's own download
+    // rather than a repackaging.
+    {
+        id: 'uzdoom',
+        hosts: ['darwin'],
+        title: 'UZDoom',
+        kind: 'Source port',
+        game: 'Doom',
+        blurb: 'The ZDoom-family engine after GZDoom, native on Apple Silicon. DOOM 64 CE runs on it.',
+        source: {
+            name: 'GitHub, UZDoom/UZDoom',
+            url: 'https://github.com/UZDoom/UZDoom/releases/latest',
+            hint: 'On the Releases page, download the macOS disk image. It is named MacOS-UZDoom-Release-ARM64.dmg.',
+        },
+        archive: /^macos[\s_.-]*uzdoom.*\.dmg$/i,
+        samples: ['MacOS-UZDoom-Release-ARM64.dmg'],
+        dirName: 'UZDoom',
+        entry: { exe: /^UZDoom\.app$/i, bundle: true, platform: 'osx' },
+        // No data of its own: it is installed for the games that run on it, and a requirement
+        // here would refuse the engine to someone who owns Doom 64 but not Doom II.
+        data: null,
+    },
     {
         id: 'doom-ce',
         hosts: ['darwin'],
@@ -685,15 +708,36 @@ const RECIPES = [
         title: 'DOOM 64 CE',
         kind: 'Source port',
         game: 'Doom',
-        blurb: 'Doom 64 rebuilt on modern GZDoom, with the lighting and atmosphere of the Nintendo 64 original. Needs a copy of Doom 64, whose WAD it patches on the way in. Windows build, so it runs through CrossOver.',
+        /*
+         * ⚠️ Runs on NATIVE UZDoom, not the uzdoom.exe in its download, and not through CrossOver.
+         *
+         * Through CrossOver the game froze at random. Caught in the log: UZDoom's Vulkan backend
+         * runs on MoltenVK there, and Metal killed a command buffer with "Caused GPU Hang Error
+         * (kIOGPUCommandBufferCallbackErrorHang)" within a minute of MAP01, with nobody touching
+         * the controls. UZDoom's OpenGL backend is no way out inside CrossOver: it dies before
+         * the title screen with "UZDoom Very Fatal Error". UZDoom ships its own Apple Silicon
+         * build, and on it the same game, same files, same map ran three minutes without a hang,
+         * drawing all the way (12 of 12 sampled frames different), on OpenGL 4.1 over Metal.
+         * The mod's README says the bundled engine is only there for convenience.
+         *
+         * So the download is installed exactly as before (patch, -iwad, add-ons) and the engine
+         * is the native UZDoom recipe, asked for in the same click if it is not installed, the
+         * way Brutal Doom asks for GZDoom. `ownArchive` is what says this one brings its own
+         * download rather than being a mod file or a data-only game.
+         */
+        engine: ['uzdoom'],
+        ownArchive: true,
+        blurb: 'Doom 64 rebuilt on modern GZDoom, with the lighting and atmosphere of the Nintendo 64 original. Needs a copy of Doom 64, whose WAD it patches on the way in. Runs natively on UZDoom.',
         source: {
             name: 'ModDB, DOOM CE',
             url: 'https://www.moddb.com/mods/doom-ce/downloads',
-            hint: 'Take the DOOM 64 download, named like DOOM64.CE-4.0.0.zip. It brings the engine and the patch it needs.',
+            hint: 'Take the DOOM 64 download, named like DOOM64.CE-4.0.0.zip. It brings the patch it needs; the engine is UZDoom for macOS, asked for separately.',
         },
         archive: /^doom[\s_.-]*64[\s_.-]*ce.*\.(zip|7z|rar)$/i,
         samples: ['DOOM64.CE-4.0.0.zip'],
         dirName: 'DOOM 64 CE',
+        // uzdoom.exe is only how the unpacked download is located: it marks the folder the
+        // patch, the ipk3 and the add-ons sit in. It is not what runs; see `engine` above.
         entry: { exe: /^uzdoom\.exe$/i, platform: 'windows' },
         entryIwad: /^DOOM64\.CE\.ipk3$/i,
         // On this host the Steam release is Windows only, so the WAD comes out of the
@@ -1982,7 +2026,7 @@ function findRelCaseInsensitive(base, rel) {
     return fs.existsSync(cur) ? cur : null;
 }
 
-function installFromArchive({ recipeId, archivePath, installRoot, dataRows, dataPath, reserved = [], overwrite = false }) {
+function installFromArchive({ recipeId, archivePath, installRoot, dataRows, dataPath, reserved = [], overwrite = false, engine = null }) {
     installRoot = resolveRoot(installRoot);   // never create a literal "~" directory
     const recipe = getRecipe(recipeId);
     if (!recipe) return { ok: false, error: `Unknown recipe "${recipeId}".` };
@@ -2185,6 +2229,39 @@ function installFromArchive({ recipeId, archivePath, installRoot, dataRows, data
         ? host.appExecutable(exe)
         : exe;
 
+    let executable = path.relative(target, entryExe) || path.basename(entryExe);
+    let platform = recipe.entry.platform;
+
+    /*
+     * A download that brings its own game but runs on an engine installed separately (DOOM 64
+     * CE on native UZDoom). The engine's .app is linked into the game's folder and its binary
+     * becomes the entry point, so the launcher spawns it directly with the game's folder as
+     * the working directory, which is how the mod finds its add-ons ("./DOOM64.CE.Addon...").
+     * Through `open` there would be no working directory at all; see needsCwd.
+     *
+     * Linked, not copied: one engine serves every game on it, and updating it updates them
+     * all. Checked that a symlinked UZDoom.app still loads its own uzdoom.pk3 from inside the
+     * bundle, so the Windows engine's paks in the download are never picked up instead.
+     */
+    if (recipe.ownArchive && recipe.engine) {
+        if (!engine || !engine.install_path || !engine.executable) {
+            return { ok: false, error: `${recipe.title} needs ${recipe.engine.join(' or ')} installed first.` };
+        }
+        if (path.dirname(exe) !== target) {
+            return { ok: false, error: `Unpacked into an unexpected layout: the game files are not at the top of ${target}.` };
+        }
+        const bundle = path.join(engine.install_path, engine.executable);
+        const inner = typeof host.appExecutable === 'function' ? host.appExecutable(bundle) : bundle;
+        if (!/\.app$/i.test(bundle) || inner === bundle || !fs.existsSync(inner)) {
+            return { ok: false, error: `The installed engine at ${bundle} is not a usable app. Reinstall it.` };
+        }
+        const link = path.join(target, path.basename(bundle));
+        try { fs.rmSync(link, { recursive: true, force: true }); } catch {}
+        fs.symlinkSync(bundle, link, 'dir');
+        executable = path.join(path.basename(bundle), path.relative(bundle, inner));
+        platform = 'osx';
+    }
+
     return {
         ok: true,
         recipeId: recipe.id,
@@ -2192,8 +2269,8 @@ function installFromArchive({ recipeId, archivePath, installRoot, dataRows, data
         category: recipe.category || '',
         title,
         installPath: target,
-        executable: path.relative(target, entryExe) || path.basename(entryExe),
-        platform: recipe.entry.platform,
+        executable,
+        platform,
         launchArgs,
         dataFrom: data && data.ok ? { path: data.path, title: data.title, linked: linked.linked } : null,
         extraFrom: extra ? extra.title : null,

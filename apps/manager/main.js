@@ -1289,6 +1289,19 @@ ipcMain.handle('custom-install', async (_, { recipeId, archivePath, engineArchiv
             engine = { install_path: er.installPath, executable: er.executable, title: er.title };
         }
 
+        // A download that brings its own game and only borrows the engine (DOOM 64 CE on
+        // native UZDoom): installed like any other archive, then pointed at the engine.
+        if (recipe.ownArchive) {
+            const gr = customInstallers.installFromArchive({
+                recipeId, archivePath, dataPath, overwrite: !!overwrite, reserved: _reservedPaths(`cn_${recipeId}`),
+                installRoot: installerDefaultDir(), dataRows: _installerRowsForData(), engine,
+            });
+            if (!gr.ok) return (gr.needsData || gr.exists) ? { ...gr, engineTitle: engine.title } : gr;
+            try { _registerCustomInstall(gr); } catch (e) { return { ok: false, error: `Installed, but could not add it to the library: ${e.message}` }; }
+            invalidateInstallerInstalledCache();
+            return { ...gr, engineTitle: engine.title };
+        }
+
         // A game on a shared engine brings no download of its own. It needs the engine
         // and its data, and gets a folder of its own so two Build games never collide
         // over tiles000.art.
