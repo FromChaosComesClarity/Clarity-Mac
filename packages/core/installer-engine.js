@@ -1134,6 +1134,13 @@ async function launchGame(gameId, opts = {}) {
         catch (e) { console.error('[launch] Fallout: London fix failed:', e.message); }
     }
 
+    // Recipe (see applyRoadRashFix). Same place, same reason: the DLL, the drive and the
+    // install record all have to be settled before the game looks for them.
+    if (isRoadRash(game) && installPath) {
+        try { await applyRoadRashFix(installPath, prefix, proton); }
+        catch (e) { console.error('[launch] Road Rash fix failed:', e.message); }
+    }
+
     // Recipe (see applyWineDesktop). Before the spawn, because the game reads the
     // desktop setting as it starts, and never a reason a launch fails: a game that would
     // have run without it must still get its chance.
@@ -1304,6 +1311,104 @@ async function injectGogRegistry(game, prefix, proton) {
         const proc = spawn(reg.cmd, reg.args, { env: reg.env, stdio: 'ignore' });
         proc.on('close', () => { try { fs.unlinkSync(regFile); } catch {} resolve(); });
         proc.on('error', () => { try { fs.unlinkSync(regFile); } catch {} resolve(); });
+    });
+}
+
+// ── Recipe: Road Rash (1996, Windows), installed off its own disc ─────────────
+//
+// Ported from the Linux edition, where the faults were found one at a time on a real disc.
+// Three of the four are handled here; the fourth, the 640x480 display mode, is the
+// wineDesktop in game-fixes.js, which on this host replaces Linux's gamescope.
+//
+// ⚠️ AWEMAN32.DLL. The game imports it, and it does not sit beside the game: it is in SETUP/
+// on the disc, and the Windows installer put it in place. Copy the disc and the import fails
+// before a window exists, which Wine reports as status c0000135 and the player sees as
+// nothing at all.
+//
+// ⚠️ The install record. Without it: "You need to install RoadRash before you can run it.
+// Please run the Setup program." The disc's InstallShield wizard works, but all it leaves
+// behind that the game reads is one string, Path, under Electronic Arts\RoadRash 95, so it is
+// written here instead, pointing at the folder the game actually runs from.
+//
+// ⚠️ The CD drive. The game wants a CD-ROM and the disc is now a folder, so D: is pointed at
+// the install and told it is a cdrom. Rewritten every launch rather than once, because
+// rebuilding or upgrading a prefix clears dosdevices and the mapping does not survive it.
+//
+// What is different from Linux: there is no wineboot step. On this host the prefix is a
+// CrossOver bottle, and regeditCommand creates it (ensureBottle) before returning, so awaiting
+// it is what builds the prefix. The lesson Linux paid an evening for still applies, and is
+// why the drive is mapped only AFTER that await: a prefix directory that exists holding
+// nothing but dosdevices/ is not a bottle, and would be cleared or refused rather than built.
+function isRoadRash(game) {
+    return (game?.store || '').toLowerCase() === 'custom' && /^cn_roadrash$/i.test(String(game?.id || ''));
+}
+
+async function applyRoadRashFix(installPath, prefix, proton) {
+    // The game's own executable, not the folder name.
+    const exe = resolvePathCaseInsensitive(path.join(installPath, 'ROADRASH', 'ROADRASH.EXE'));
+    if (!fs.existsSync(exe)) return;
+    const gameDir = path.dirname(exe);
+
+    // 1. The DLL the installer would have placed. Nothing else can start without it.
+    if (!fs.existsSync(resolvePathCaseInsensitive(path.join(gameDir, 'AWEMAN32.DLL')))) {
+        const src = resolvePathCaseInsensitive(path.join(installPath, 'SETUP', 'AWEMAN32.DLL'));
+        if (fs.existsSync(src)) {
+            try { fs.copyFileSync(src, path.join(gameDir, 'AWEMAN32.DLL')); }
+            catch (e) { console.error('[launch] Road Rash: could not place AWEMAN32.DLL:', e.message); }
+        }
+    }
+
+    // 2. The registry the installer writes, and the drive letter's type.
+    const winGameDir = host.runtime.toWindowsPath(gameDir);
+    const pathLine = `"Path"="${winGameDir.replace(/\\/g, '\\\\')}"`;
+    let systemReg = null;
+    try { systemReg = fs.readFileSync(path.join(prefix, 'system.reg'), 'utf8'); } catch {}
+    // system.reg escapes backslashes exactly as a .reg file does, so the line regedit is
+    // handed is also the line to look for on disk.
+    const needPath  = systemReg === null || !systemReg.includes(pathLine);
+    const needDrive = systemReg === null || !/^"d:"="cdrom"$/m.test(systemReg);
+
+    // 3. The CD drive is mapped every launch regardless (see above), but only once the bottle
+    // exists, which means after regeditCommand when there is something to write, and straight
+    // away when the bottle is already there and nothing is.
+    const mapDrive = () => {
+        try {
+            const devices = path.join(prefix, 'dosdevices');
+            if (!fs.existsSync(path.join(prefix, 'system.reg'))) return;   // not a bottle yet: never seed one
+            fs.mkdirSync(devices, { recursive: true });
+            const letter = path.join(devices, 'd:');
+            try { fs.unlinkSync(letter); } catch {}
+            try { fs.unlinkSync(path.join(devices, 'd::')); } catch {}   // a real device here wins over ours
+            fs.symlinkSync(installPath, letter, 'dir');
+        } catch (e) { console.error('[launch] Road Rash: could not map the CD drive:', e.message); }
+    };
+
+    if (!needPath && !needDrive) { mapDrive(); return; }
+
+    let regContent = 'Windows Registry Editor Version 5.00\r\n\r\n';
+    if (needPath) {
+        regContent +=
+            '[HKEY_LOCAL_MACHINE\\SOFTWARE\\Electronic Arts\\RoadRash 95]\r\n' +
+            `${pathLine}\r\n\r\n` +
+            '[HKEY_LOCAL_MACHINE\\SOFTWARE\\WOW6432Node\\Electronic Arts\\RoadRash 95]\r\n' +
+            `${pathLine}\r\n\r\n`;
+    }
+    if (needDrive) {
+        regContent += '[HKEY_LOCAL_MACHINE\\Software\\Wine\\Drives]\r\n"d:"="cdrom"\r\n\r\n';
+    }
+
+    const regFile = path.join(os.tmpdir(), 'roadrash_fix.reg');
+    try { fs.writeFileSync(regFile, regContent, 'utf8'); } catch { return; }
+
+    // Awaiting this builds the bottle on a first run; see the header.
+    const reg = await host.runtime.regeditCommand({ prefix, runtimePath: proton, regFile });
+    mapDrive();
+    await new Promise(resolve => {
+        const finish = () => { try { fs.unlinkSync(regFile); } catch {} resolve(); };
+        const proc = spawn(reg.cmd, reg.args, { env: reg.env, stdio: 'ignore' });
+        const timer = setTimeout(() => { try { proc.kill('SIGKILL'); } catch {} finish(); }, 60000);
+        proc.on('close', () => { clearTimeout(timer); finish(); });
+        proc.on('error', () => { clearTimeout(timer); finish(); });
     });
 }
 

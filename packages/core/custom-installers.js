@@ -20,6 +20,7 @@ const path = require('path');
 const os = require('os');
 const { spawnSync } = require('child_process');
 const host = require('./platform/index.js');
+const { applyBps } = require('./bps.js');
 
 // ── The catalogue ────────────────────────────────────────────────────────────
 // `archive` matches the file the user drops on us, so a mis-dropped download is caught
@@ -630,6 +631,121 @@ const RECIPES = [
         entry: { exe: /^mini\s*doom[\s_-]*2.*\.exe$/i, platform: 'windows' },
         data: null,
     },
+
+    // ── Ported from the Linux edition: DOOM CE, DOOM 64 CE, Road Rash ─────────────
+    // All three are Windows builds and run through CrossOver, exactly as Linux runs them
+    // through Proton. The recipes are the Linux ones with `hosts` added; what had to change
+    // for this host is said where it changed.
+    //
+    // ⚠️ DOOM CE is a port, not a mod. It ships its own engine build (UZDoom) and its .ipk3 is
+    // an IWAD rather than something stacked on top, so it installs standalone and launches
+    // with -iwad pointing at the ipk3, and its addons load themselves. Loading any of its files
+    // with -file instead is fatal, not merely redundant: the download carries the engine's own
+    // paks (uzdoom.pk3, game_support.pk3, lights.pk3 and the rest), and handing one of those to
+    // a running engine makes it abort before the title screen: "File uzdoom.pk3 is overriding
+    // core lump engine/commonbinds.txt."
+    {
+        id: 'doom-ce',
+        hosts: ['darwin'],
+        title: 'DOOM CE',
+        kind: 'Source port',
+        game: 'Doom',
+        blurb: 'The PSX Doom and PSX Final Doom total conversions, rebuilt to use what modern GZDoom can do. The console versions\u2019 lighting, palette and soundtrack, on the PC engine. Windows build, so it runs through CrossOver.',
+        source: {
+            name: 'ModDB, DOOM CE',
+            url: 'https://www.moddb.com/mods/doom-ce/downloads',
+            hint: 'Take a Full or Lite download, named like PSXDOOM.CE-4.0.0.zip. It brings the engine it needs, so there is nothing to install first.',
+        },
+        // ⚠️ Doom 64 CE is deliberately not matched, hence the lookahead: it is published in
+        // the same place under the same name, and needs its own recipe below because its IWAD
+        // has to be built rather than linked.
+        archive: /^(?!doom[\s_.-]*64)(psx[\s_.-]*)?(final[\s_.-]*)?doom[\s_.-]*ce.*\.(zip|7z|rar)$/i,
+        samples: ['PSXDOOM.CE-4.0.0.zip', 'PSXFINALDOOM.CE-4.0.0.zip', 'DOOM.CE-Lite-4.0.0.zip'],
+        dirName: 'DOOM CE',
+        entry: { exe: /^uzdoom\.exe$/i, platform: 'windows' },
+        entryIwad: /\.ipk3$/i,
+        // It wants doom2.wad, and the ORIGINAL one: see DATA_SPECS.doom's `prefer` for the
+        // re-release that ships two and how a KEX copy silently becomes plain Doom II.
+        data: 'doom',
+    },
+    /*
+     * DOOM 64 CE. Its IWAD has to be generated: Nightdive's DOOM64.WAD cannot be used as it
+     * is, and the mod ships a BPS patch plus a .bat that applies it. The .bat is for Windows
+     * users; all it adds is hunting through the registry for a Steam install, which the
+     * library already knows, and assembling the Lost Levels, which this release cannot do
+     * anyway because the S_LOST*.BPS files and LOST00.wad the script asks for are not in it.
+     *
+     * On Linux the patch is applied with the download's own flips-linux. There is no macOS
+     * Flips in it, so here bps.js applies it (see installFromArchive), and `tool` is gone.
+     */
+    {
+        id: 'doom64-ce',
+        hosts: ['darwin'],
+        title: 'DOOM 64 CE',
+        kind: 'Source port',
+        game: 'Doom',
+        blurb: 'Doom 64 rebuilt on modern GZDoom, with the lighting and atmosphere of the Nintendo 64 original. Needs a copy of Doom 64, whose WAD it patches on the way in. Windows build, so it runs through CrossOver.',
+        source: {
+            name: 'ModDB, DOOM CE',
+            url: 'https://www.moddb.com/mods/doom-ce/downloads',
+            hint: 'Take the DOOM 64 download, named like DOOM64.CE-4.0.0.zip. It brings the engine and the patch it needs.',
+        },
+        archive: /^doom[\s_.-]*64[\s_.-]*ce.*\.(zip|7z|rar)$/i,
+        samples: ['DOOM64.CE-4.0.0.zip'],
+        dirName: 'DOOM 64 CE',
+        entry: { exe: /^uzdoom\.exe$/i, platform: 'windows' },
+        entryIwad: /^DOOM64\.CE\.ipk3$/i,
+        // On this host the Steam release is Windows only, so the WAD comes out of the
+        // CrossOver Steam bottle; the data search sees Steam games for exactly this reason.
+        data: 'doom64',
+        // Nightdive's WAD in, the engine's IWAD out, checked against the checksums the patch
+        // carries, so a modified or re-release WAD fails here with a sentence about why
+        // rather than at the title screen with nothing.
+        patch: {
+            bps: 'patcher/DOOM64.bps',
+            input: /^doom64\.wad$/i,
+            output: 'DOOM64.IWAD',
+        },
+    },
+    {
+        id: 'roadrash',
+        hosts: ['darwin'],
+        title: 'Road Rash',
+        kind: 'Game',
+        game: '',
+        blurb: 'EA\u2019s 1996 Windows port of the Mega Drive brawler-racer. Chains, clubs, and a soundtrack of actual bands. Complete in itself; the disc carries everything. Runs through CrossOver.',
+        source: {
+            name: 'Your own disc or backup',
+            url: '',
+            hint: 'Point at the CD image, ROADRASH.iso, or at the archive holding it. The disc has the whole game on it, so nothing else is needed.',
+        },
+        /*
+         * ⚠️ The disc, not the repack's installer.
+         *
+         * Backups of this game usually come as a pair: a small "setup" download and the full
+         * disc image. The setup one is an Inno Setup executable, and nothing here can open
+         * those. It does not matter, because the disc is the better source anyway: everything
+         * is on it, 467MB under ROADRASH/, and the game reads its data through relative paths
+         * (Audio/Music/, Data/, Images/), so a plain copy off the disc runs from its own
+         * folder. macOS's own bsdtar reads ISO 9660, so nothing extra is needed to open it.
+         */
+        // The lookahead is load-bearing, as it is for Mini Doom. The setup download unpacks
+        // to a RoadRash.exe that is the Inno installer, not the game, and it matches the entry
+        // pattern below perfectly. Without this the install would report success and leave an
+        // installer sitting there wearing the game's name.
+        archive: /^road[\s_-]*rash(?!.*setup).*\.(7z|zip|rar|iso)$/i,
+        samples: ['Road_Rash_Win_ISO_EN.7z', 'ROADRASH.iso'],
+        dirName: 'Road Rash',
+        /*
+         * ⚠️ The whole disc is installed, SETUP/ included, and that is not tidiness left
+         * undone. SETUP/ looks like installer leftovers worth pruning and it is carrying
+         * AWEMAN32.DLL, which the game imports and cannot start without. The launch fix
+         * copies it from there. Drop the folder to save 19MB and Road Rash stops working,
+         * with nothing on screen to say why.
+         */
+        entry: { exe: /^roadrash\.exe$/i, platform: 'windows' },
+        data: null,
+    },
     {
         id: 'arcanum-ce',
         hosts: ['darwin'],
@@ -782,11 +898,45 @@ const DATA_SPECS = {
     // is what lets one spec survive all of those layouts.
     doom: {
         label: 'Doom or Doom II',
-        files: [{ find: /^(doom|doom2|doomu|tnt|plutonia)\.wad$/i, into: '' }],
+        // The DOOM + DOOM II re-release ships each IWAD twice: the KEX build sits at the
+        // top of the folder, and the original DOS WAD is tucked under dosdoom/base/. They
+        // have the same filename, so the shallowest-wins rule in linkGameData would always
+        // take the KEX one, and some mods refuse it outright. DOOM CE is the honest example:
+        // handed the KEX doom2.wad it does not complain, it silently loads plain Doom II
+        // instead and you never see PSX Doom at all. The original is what mods are built
+        // against, so when both are there, it wins. (Ported from the Linux edition.)
+        //
+        // ⚠️ Two layouts, not one. GOG's puts the originals under dosdoom/base/, which is all
+        // the Linux rule knew. Steam's (app "Ultimate Doom") puts them under base/, beside a
+        // rerelease/ folder holding the KEX copies, and has no dosdoom/ at all, so that rule
+        // never matched there and depth handed DOOM CE rerelease/doom2.wad. Checked on a real
+        // install: base/doom2/DOOM2.WAD is the v1.9 original (md5 25e1459c...), the
+        // rerelease/ one is not. A `base/` segment covers both, since dosdoom/base/ has one.
+        files: [{
+            find: /^(doom|doom2|doomu|tnt|plutonia)\.wad$/i,
+            into: '',
+            prefer: /(^|[\\/])(dosdoom[\\/])?base[\\/]/i,
+        }],
         requireAny: true,
         titles: [/^(the ultimate )?doom$/i, /^doom \+ doom ii/i, /^doom ii/i, /^final doom$/i, /^doom (i|ii) enhanced$/i, /^doom$/i],
         exclude: [/doom 3|doom 64|eternal|dark ages|\(2016\)|resurrection|phobos|akalabeth/i],
         owned: 'You own Doom but it is not installed. Install it first and this will find the IWAD automatically.',
+    },
+
+    // Doom 64 is its own data requirement rather than part of the Doom one, because the
+    // file it wants is not interchangeable with the others: nothing that loads doom2.wad
+    // can do anything with DOOM64.WAD, and vice versa. Kept separate so a library with
+    // Doom but not Doom 64 reports the right thing missing.
+    //
+    // On this host the Steam release is Windows only, so DOOM64.WAD lives inside the
+    // CrossOver Steam bottle; the data search already looks there, as it does for Duke.
+    doom64: {
+        label: 'DOOM 64',
+        files: [{ find: /^doom64\.wad$/i, into: '' }],
+        requireAny: true,
+        titles: [/^doom\s*64$/i],
+        exclude: [/eternal|dark ages|\(2016\)|doom 3|resurrection/i],
+        owned: 'You own DOOM 64 but it is not installed. Install it first and this will find the WAD automatically.',
     },
 
     // Wolfenstein's whole data set shares one extension per release, VSWAP, MAPHEAD,
@@ -1137,11 +1287,30 @@ function extractInstaller(archivePath, target) {
 // setup.exe holds an 83MB data.7z. One level of unwrapping, and only when the first pass
 // produced no executable, so this never fires for a normal download.
 function unwrapNestedArchive(dir) {
+    /*
+     * ⚠️ .iso counts, and the payload is not always at the top. (Ported from the Linux edition.)
+     *
+     * A disc-image backup is the same situation as an installer carrying a second archive:
+     * the thing you were given wraps the thing you want. macOS's bsdtar reads ISO 9660
+     * natively, so this costs nothing beyond naming the extension.
+     *
+     * One level down as well as the top, because a repack usually puts the image in a folder
+     * of its own ("Game Files/ROADRASH.iso") beside a readme, which means flattenSingleRoot
+     * cannot lift it and a top-level-only search never sees it.
+     */
     let inner = [];
+    const wanted = /\.(7z|zip|rar|tar|gz|xz|cab|iso)$/i;
     try {
-        inner = fs.readdirSync(dir, { withFileTypes: true })
-            .filter(e => e.isFile() && /\.(7z|zip|rar|tar|gz|xz|cab)$/i.test(e.name))
-            .map(e => path.join(dir, e.name));
+        for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+            if (e.isFile() && wanted.test(e.name)) { inner.push(path.join(dir, e.name)); continue; }
+            if (!e.isDirectory()) continue;
+            const sub = path.join(dir, e.name);
+            try {
+                for (const f of fs.readdirSync(sub, { withFileTypes: true })) {
+                    if (f.isFile() && wanted.test(f.name)) inner.push(path.join(sub, f.name));
+                }
+            } catch {}
+        }
     } catch { return false; }
     if (!inner.length) return false;
 
@@ -1678,8 +1847,21 @@ function linkGameData(dataId, sourceRoot, targetRoot, extraSource, { copy = fals
             // and Cryptic Passage's replacements in addons/, under the same filenames, so
             // whichever the directory walk happened to reach first would silently decide
             // which tileset the game loads. Depth is the rule that gets it right.
+            // A spec may name the copy it wants when a game ships the same filename more
+            // than once; that beats depth, because the preferred one is usually the buried
+            // one. Everything else falls through to the depth rule.
             const found = findFiles(root, f.find)
-                .sort((a, b) => a.split(path.sep).length - b.split(path.sep).length);
+                .sort((a, b) => {
+                    if (f.prefer) {
+                        // Tested on the path inside the game's folder, not the absolute one:
+                        // a `base` anywhere above the game, a home folder or a volume name,
+                        // would otherwise mark every candidate preferred and decide nothing.
+                        const pa = f.prefer.test(path.relative(root, a)) ? 0 : 1;
+                        const pb = f.prefer.test(path.relative(root, b)) ? 0 : 1;
+                        if (pa !== pb) return pa - pb;
+                    }
+                    return a.split(path.sep).length - b.split(path.sep).length;
+                });
             for (const hit of found) {
                 const name = path.basename(hit).toLowerCase();
                 if (seen.has(name)) continue;
@@ -1768,6 +1950,22 @@ function resolveRoot(root) {
 
 // Unpack a download into its own folder under `installRoot` and work out how to start it.
 // Does not touch any database, the caller decides how to register the result.
+// A path inside an unpacked download, matched one segment at a time without regard to case.
+// Releases are packed on Windows, where DOOM64.bps and doom64.BPS are the same file, and a
+// case-sensitive APFS volume would otherwise turn a perfectly good download into "no patch
+// inside". Returns the real path, or null.
+function findRelCaseInsensitive(base, rel) {
+    let cur = base;
+    for (const seg of String(rel).split(/[\\/]+/).filter(Boolean)) {
+        let names = [];
+        try { names = fs.readdirSync(cur); } catch { return null; }
+        const hit = names.find(n => n.toLowerCase() === seg.toLowerCase());
+        if (!hit) return null;
+        cur = path.join(cur, hit);
+    }
+    return fs.existsSync(cur) ? cur : null;
+}
+
 function installFromArchive({ recipeId, archivePath, installRoot, dataRows, dataPath, reserved = [], overwrite = false }) {
     installRoot = resolveRoot(installRoot);   // never create a literal "~" directory
     const recipe = getRecipe(recipeId);
@@ -1895,6 +2093,67 @@ function installFromArchive({ recipeId, archivePath, installRoot, dataRows, data
                   || wads[0];
         if (pick) launchArgs = `-iwad "${path.join(beside, pick)}"`;
         }
+    }
+
+    /*
+     * Game data that has to be built rather than linked. (Ported from the Linux edition.)
+     *
+     * DOOM 64 CE cannot ship Nightdive's IWAD, so it ships a BPS patch against it, and the
+     * playable file is generated here out of the copy the user already owns. Linux runs the
+     * mod's own flips-linux for this; the download carries no macOS build of Flips, so the
+     * patch is applied by packages/core/bps.js instead, which checks the same three CRC32s
+     * Flips does. A WAD that is not the one the patch was made for is refused with its size
+     * and checksum, rather than producing an IWAD that dies at the title screen.
+     *
+     * Skipped when the output is already there. Patching is cheap but not free, and re-running
+     * it over a good file is a way to break a working install if the source ever changed
+     * underneath.
+     */
+    if (recipe.patch) {
+        const base = path.dirname(exe);
+        const bps = findRelCaseInsensitive(base, recipe.patch.bps);
+        const out = path.join(base, recipe.patch.output);
+        if (!bps) {
+            return { ok: false, error: `That download has no patch inside, so the game data cannot be built. ${recipe.source.hint}` };
+        }
+        if (!fs.existsSync(out)) {
+            let src = '';
+            try { src = (fs.readdirSync(base).find(n => recipe.patch.input.test(n)) || ''); } catch {}
+            if (!src) {
+                const label = (DATA_SPECS[recipe.data] || {}).label || 'The game data';
+                return { ok: false, error: `${label} was not found to patch.` };
+            }
+            try {
+                // readFileSync follows the data symlink, so this reads the user's own WAD in
+                // place; nothing is written next to it.
+                const built = applyBps(fs.readFileSync(path.join(base, src)), fs.readFileSync(bps));
+                fs.writeFileSync(out, built);
+            } catch (e) {
+                try { fs.unlinkSync(out); } catch {}
+                return { ok: false, error: `Could not build the game data from your copy. ${e.message}` };
+            }
+        }
+    }
+
+    // Some ports carry their game as an IWAD rather than as loose data: DOOM CE's .ipk3 is
+    // the game, and the engine wants it named with -iwad. The filename varies with the
+    // download (PSXDOOM.CE.ipk3, PSXFINALDOOM.CE.ipk3), so it is read off what was actually
+    // unpacked instead of being written into the recipe. Each of these downloads ships
+    // exactly one, and if a future one ships more, the first by name is the base game and
+    // the others are its addons, which load themselves. (Ported from the Linux edition.)
+    //
+    // Relative, not absolute, unlike the bundled-engine case above: these are Windows builds
+    // started through CrossOver with the install folder as their working directory, and a
+    // Mac path handed to a Windows program means nothing to it.
+    if (recipe.entryIwad) {
+        let found = [];
+        try {
+            found = fs.readdirSync(path.dirname(exe)).filter(n => recipe.entryIwad.test(n)).sort();
+        } catch {}
+        if (!found.length) {
+            return { ok: false, error: `Unpacked, but the game data was not found inside. ${recipe.source.hint}` };
+        }
+        launchArgs = formatArgs(['-iwad', found[0]]);
     }
 
     // An engine that needs a working directory cannot be started through `open`, which throws

@@ -1124,10 +1124,38 @@ function _reservedPaths(exceptId) {
     } catch { return []; }
 }
 
+/*
+ * Everything a recipe may take game data from: the installer's own library, and Steam.
+ *
+ * ⚠️ Steam was missing, and it was not a small gap. The installer database only knows GOG,
+ * Epic and custom installs, so any recipe needing a file out of a Steam game decided you did
+ * not own it. On this host it is worse than on Linux: DOOM 64 is a Windows-only Steam title,
+ * so its WAD only ever exists inside the CrossOver Steam bottle, and the only way to it was
+ * picking a folder buried under ~/Library by hand. (Ported from the Linux edition.)
+ *
+ * resolveGameFolder already reads the bottle's Steam libraries through
+ * host.steamLibraryPaths, so a bottled game resolves exactly as a Mac Steam one does. Rows
+ * are shaped like the installer's own, so resolveGameData never has to know which store
+ * a folder came from.
+ */
 const _installerRowsForData = () => {
-    if (!ensureInstallerEngine()) return [];
-    try { return _installerEngineDb.prepare('SELECT title, install_path, installed FROM games').all(); }
-    catch { return []; }
+    const rows = [];
+    if (ensureInstallerEngine()) {
+        try { rows.push(..._installerEngineDb.prepare('SELECT title, install_path, installed FROM games').all()); }
+        catch {}
+    }
+    if (db) {
+        try {
+            const steam = db.prepare(
+                "SELECT Game, SteamAppID FROM games WHERE Installed=1 " +
+                "AND SteamAppID IS NOT NULL AND SteamAppID NOT IN ('', 'None')").all();
+            for (const g of steam) {
+                const dir = resolveGameFolder({ SteamAppID: g.SteamAppID });
+                if (dir) rows.push({ title: g.Game, install_path: dir, installed: 1 });
+            }
+        } catch {}
+    }
+    return rows;
 };
 
 // The first engine from an accepted group that is actually installed. Mods declare a group

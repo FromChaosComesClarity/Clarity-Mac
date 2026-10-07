@@ -40,6 +40,33 @@ const path = require('path');
 
 const FIXES = [
     {
+        id: 'roadrash',
+        title: 'Road Rash (1996, PC)',
+        exe: 'roadrash.exe',
+        platform: 'darwin',
+        symptom: 'Nothing happens at all, then a Fatal Error box, then it asks you to run Setup.',
+        why:
+            "Four faults in a row, each one hiding the next, and all of them come from " +
+            "installing off the disc rather than through the disc's installer. The game " +
+            "imports AWEMAN32.DLL, which lives in SETUP/ and which the Windows installer " +
+            "copied into place; without it the import fails before a window exists. Then it " +
+            "asks the display to become 640x480, and the game treats a refusal as fatal; on a " +
+            "Mac the display has no such mode to give, the same way it has none for Arcanum. " +
+            "Then it looks for a CD-ROM drive and finds none, because the disc is now a " +
+            "folder. Then it looks for the install record the setup program writes, one " +
+            "string under Electronic Arts\\RoadRash 95, and gives up without it. All four are " +
+            "settled at launch, so the disc is all anyone needs. (Ported from the Linux " +
+            "edition, where the four faults were found.)",
+        env: {},
+        settings: [],
+        // Linux gives the game 640x480 inside gamescope and scales it to the screen. There is
+        // no gamescope here, so it gets the Wine virtual desktop Arcanum uses: 640x480 is
+        // Wine's to emulate inside a window rather than the display's to provide. The other
+        // three faults are handled in installer-engine.js's applyRoadRashFix.
+        wineDesktop: { name: 'RoadRash', size: '640x480' },
+        handledBy: 'AWEMAN32.DLL, a CD-ROM drive, the install registry value, and a 640x480 desktop',
+    },
+    {
         id: 'arcanum',
         title: 'Arcanum: Of Steamworks and Magick Obscura',
         exe: 'arcanum.exe',
