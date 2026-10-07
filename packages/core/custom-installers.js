@@ -674,11 +674,17 @@ const RECIPES = [
         title: 'DOOM CE',
         kind: 'Source port',
         game: 'Doom',
-        blurb: 'The PSX Doom and PSX Final Doom total conversions, rebuilt to use what modern GZDoom can do. The console versions\u2019 lighting, palette and soundtrack, on the PC engine. Windows build, so it runs through CrossOver.',
+        // ⚠️ Native UZDoom, like DOOM 64 CE below and for the same reason. Through CrossOver it
+        // ran on MoltenVK, and on MAP01 the far walls drew as a flat grey smear with the wrong
+        // textures beside them, where native UZDoom drew the same spot correctly. Captured both
+        // ways on the same files. DOOM 64 CE's GPU hang came out of that same layer.
+        engine: ['uzdoom'],
+        ownArchive: true,
+        blurb: 'The PSX Doom and PSX Final Doom total conversions, rebuilt to use what modern GZDoom can do. The console versions\u2019 lighting, palette and soundtrack, on the PC engine. Runs natively on UZDoom.',
         source: {
             name: 'ModDB, DOOM CE',
             url: 'https://www.moddb.com/mods/doom-ce/downloads',
-            hint: 'Take a Full or Lite download, named like PSXDOOM.CE-4.0.0.zip. It brings the engine it needs, so there is nothing to install first.',
+            hint: 'Take a Full or Lite download, named like PSXDOOM.CE-4.0.0.zip. The engine is UZDoom for macOS, asked for separately if it is not installed yet.',
         },
         // ⚠️ Doom 64 CE is deliberately not matched, hence the lookahead: it is published in
         // the same place under the same name, and needs its own recipe below because its IWAD
@@ -686,6 +692,7 @@ const RECIPES = [
         archive: /^(?!doom[\s_.-]*64)(psx[\s_.-]*)?(final[\s_.-]*)?doom[\s_.-]*ce.*\.(zip|7z|rar)$/i,
         samples: ['PSXDOOM.CE-4.0.0.zip', 'PSXFINALDOOM.CE-4.0.0.zip', 'DOOM.CE-Lite-4.0.0.zip'],
         dirName: 'DOOM CE',
+        // Locates the unpacked download only; the native engine is what runs. See doom64-ce.
         entry: { exe: /^uzdoom\.exe$/i, platform: 'windows' },
         entryIwad: /\.ipk3$/i,
         // It wants doom2.wad, and the ORIGINAL one: see DATA_SPECS.doom's `prefer` for the
