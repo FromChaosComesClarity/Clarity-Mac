@@ -21,6 +21,7 @@ const os = require('os');
 const { spawnSync } = require('child_process');
 const host = require('./platform/index.js');
 const { applyBps } = require('./bps.js');
+const { extractIso } = require('./iso9660.js');
 
 // ── The catalogue ────────────────────────────────────────────────────────────
 // `archive` matches the file the user drops on us, so a mis-dropped download is caught
@@ -1318,10 +1319,25 @@ function unwrapNestedArchive(dir) {
     inner.sort((a, b) => {
         try { return fs.statSync(b).size - fs.statSync(a).size; } catch { return 0; }
     });
-    const ex = findExtractor(inner[0]);
-    if (!ex) return false;
-    const res = spawnSync(ex.cmd, ex.args(inner[0], dir), { encoding: 'utf8', maxBuffer: 32 * 1024 * 1024 });
-    if (res.status !== 0) return false;
+    /*
+     * ⚠️ An exit code is not proof anything came out. Road Rash's real disc image is the case
+     * that showed it: macOS's bsdtar lists that ISO as empty and exits 0, so this used to
+     * report success, delete the image as unpacked, and leave the installer to say "no
+     * matching executable" about a folder that had never received the game. Two changes:
+     * an .iso goes through iso9660.js, which throws rather than return nothing, and the inner
+     * archive is only deleted once the folder actually holds more than it did before.
+     */
+    const countAll = () => { try { return findFiles(dir, /./, 8).length; } catch { return 0; } };
+    const before = countAll();
+    if (/\.iso$/i.test(inner[0])) {
+        try { extractIso(inner[0], dir); } catch { return false; }
+    } else {
+        const ex = findExtractor(inner[0]);
+        if (!ex) return false;
+        const res = spawnSync(ex.cmd, ex.args(inner[0], dir), { encoding: 'utf8', maxBuffer: 32 * 1024 * 1024 });
+        if (res.status !== 0) return false;
+    }
+    if (countAll() <= before) return false;   // nothing came out: keep the archive, say no
     try { fs.unlinkSync(inner[0]); } catch {}
     return true;
 }
@@ -2026,6 +2042,11 @@ function installFromArchive({ recipeId, archivePath, installRoot, dataRows, data
     } else if (path.extname(archivePath).toLowerCase() === '.exe') {
         const got = extractInstaller(archivePath, target);
         if (!got.ok) return got;
+    } else if (path.extname(archivePath).toLowerCase() === '.iso') {
+        // Read directly, never through bsdtar: see iso9660.js for the real disc that bsdtar
+        // lists as empty while exiting 0, and that hdiutil will not mount at all.
+        try { extractIso(archivePath, target); }
+        catch (e) { return { ok: false, error: `Could not read the disc image: ${e.message}` }; }
     } else {
         const ex = findExtractor(archivePath);
         if (!ex) return { ok: false, error: 'No archive tool available. Install bsdtar (libarchive) or unzip.' };
