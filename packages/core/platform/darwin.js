@@ -861,13 +861,20 @@ function assertAvailable(runtimePath) { if (!runtimePath && !findWineCached()) t
 // not "CrossOver is missing", only a real absence throws.
 function usableRuntimePath(runtimePath) { return runtimePath || findWineCached(); }
 
-async function buildLaunch({ launchExe, allArgs, runtimePath, prefix }) {
+// ⚠️ DLL overrides go to CrossOver as --dll, never only as WINEDLLOVERRIDES in the
+// environment. CrossOver's wine does not honour the variable: launched with
+// WINEDLLOVERRIDES=ddraw=n,b, Road Rash still loaded Wine's own ddraw ("got hardcoded
+// default", "...DDRAW.dll: builtin"); launched with --dll ddraw=n,b, the copy beside the
+// game loaded as native. Every override installer-engine.js computes (shipped wrapper DLLs,
+// game-fixes.js env) was therefore silently dropped on this host until this.
+async function buildLaunch({ launchExe, allArgs, runtimePath, prefix, dllOverrides = '' }) {
     const wine = usableRuntimePath(runtimePath);
     if (!wine) throw unavailableError();
     const { bottleDir, bottleName } = await ensureBottle(prefix, wine);
+    const dll = String(dllOverrides || '').trim().replace(/;+$/, '');
     return {
         cmd: wine,
-        args: ['--bottle', bottleName, '--no-gui', launchExe, ...allArgs],
+        args: ['--bottle', bottleName, '--no-gui', ...(dll ? ['--dll', dll] : []), launchExe, ...allArgs],
         env: { CX_BOTTLE_PATH: bottleDir },
         method: 'crossover',
     };

@@ -1157,6 +1157,9 @@ async function launchGame(gameId, opts = {}) {
     // whole process synchronously to do it. A no-op for Linux, whose buildLaunch is plain sync.
     const spec = await host.runtime.buildLaunch({
         game, gameId, launchExe, isBat, userArgs, allArgs, runtimePath: proton, prefix,
+        // The final overrides, the user's own custom_env first. Linux reads them from the
+        // environment and ignores this; CrossOver ignores the environment and needs this.
+        dllOverrides: baseEnv().WINEDLLOVERRIDES || '',
     });
     spawnGame(spec.cmd, spec.args, { cwd: launchCwd, env: baseEnv(spec.env), detached: true, stdio: 'ignore' });
     return { ok: true, method: spec.method };
@@ -1317,8 +1320,17 @@ async function injectGogRegistry(game, prefix, proton) {
 // ── Recipe: Road Rash (1996, Windows), installed off its own disc ─────────────
 //
 // Ported from the Linux edition, where the faults were found one at a time on a real disc.
-// Three of the four are handled here; the fourth, the 640x480 display mode, is the
-// wineDesktop in game-fixes.js, which on this host replaces Linux's gamescope.
+//
+// The fourth fault, the display mode, is handled differently from Linux and differently from
+// how this first shipped here. The game itself calls ChangeDisplaySettings for 640x480 at 8
+// and then 16 bits; macOS has no such mode, Wine answers DISP_CHANGE_BADMODE, and the game
+// quits without a word. A 640x480 Wine virtual desktop got it running, but as a small window
+// in a corner. cnc-ddraw (packages/core/vendor/cnc-ddraw, MIT) answers the mode request
+// itself and scales the game's 640x480 picture to fill the screen, 4:3 kept, so the game's
+// resolution never changes and neither does the Mac's. Checked on a real install: with it
+// loaded there were no refused mode switches at all, and the intro and the menus filled the
+// display. It is loaded through the ddraw=n,b override in game-fixes.js, which reaches
+// CrossOver as --dll (see darwin.js buildLaunch).
 //
 // ⚠️ AWEMAN32.DLL. The game imports it, and it does not sit beside the game: it is in SETUP/
 // on the disc, and the Windows installer put it in place. Copy the disc and the import fails
@@ -1358,11 +1370,43 @@ async function applyRoadRashFix(installPath, prefix, proton) {
         }
     }
 
+    // 1b. cnc-ddraw beside the game. The DLL is replaced when it differs from the one Clarity
+    // ships, so an update reaches existing installs; the ini is written once and then left
+    // alone, as game-fixes.js does with settings, because someone who edited it meant to.
+    try {
+        const vendored = path.join(__dirname, 'vendor', 'cnc-ddraw', 'ddraw.dll');
+        const dest = path.join(gameDir, 'ddraw.dll');
+        const want = fs.readFileSync(vendored);
+        let have = null; try { have = fs.readFileSync(resolvePathCaseInsensitive(dest)); } catch {}
+        if (!have || !have.equals(want)) fs.writeFileSync(resolvePathCaseInsensitive(dest), want);
+        const ini = path.join(gameDir, 'ddraw.ini');
+        if (!fs.existsSync(resolvePathCaseInsensitive(ini))) {
+            fs.writeFileSync(ini,
+                '; Written by Clarity for Road Rash. cnc-ddraw scales the game\'s 640x480 picture to\r\n' +
+                '; fill the screen without changing the game\'s resolution or the display\'s.\r\n' +
+                '; https://github.com/FunkyFr3sh/cnc-ddraw\r\n' +
+                '[ddraw]\r\n' +
+                'windowed=true\r\n' +        // with fullscreen=true: borderless fullscreen, no mode change
+                'fullscreen=true\r\n' +
+                'border=false\r\n' +
+                'maintas=true\r\n' +         // keep 4:3, bars at the sides rather than a stretched road
+                'renderer=opengl\r\n' +
+                'adjmouse=true\r\n' +
+                'savesettings=0\r\n' +
+                'resizable=false\r\n');
+        }
+    } catch (e) { console.error('[launch] Road Rash: could not place cnc-ddraw:', e.message); }
+
     // 2. The registry the installer writes, and the drive letter's type.
     const winGameDir = host.runtime.toWindowsPath(gameDir);
     const pathLine = `"Path"="${winGameDir.replace(/\\/g, '\\\\')}"`;
     let systemReg = null;
     try { systemReg = fs.readFileSync(path.join(prefix, 'system.reg'), 'utf8'); } catch {}
+    // The 640x480 virtual desktop the first version of this fix set up. Left in place it
+    // would keep the game in a 640x480 window and cnc-ddraw would fill that, not the screen.
+    let userReg = '';
+    try { userReg = fs.readFileSync(path.join(prefix, 'user.reg'), 'utf8'); } catch {}
+    const oldDesktop = /\[Software\\\\Wine\\\\AppDefaults\\\\ROADRASH\.EXE\\\\Explorer\]/i.test(userReg);
     // system.reg escapes backslashes exactly as a .reg file does, so the line regedit is
     // handed is also the line to look for on disk.
     const needPath  = systemReg === null || !systemReg.includes(pathLine);
@@ -1383,9 +1427,12 @@ async function applyRoadRashFix(installPath, prefix, proton) {
         } catch (e) { console.error('[launch] Road Rash: could not map the CD drive:', e.message); }
     };
 
-    if (!needPath && !needDrive) { mapDrive(); return; }
+    if (!needPath && !needDrive && !oldDesktop) { mapDrive(); return; }
 
     let regContent = 'Windows Registry Editor Version 5.00\r\n\r\n';
+    if (oldDesktop) {
+        regContent += '[-HKEY_CURRENT_USER\\Software\\Wine\\AppDefaults\\ROADRASH.EXE\\Explorer]\r\n\r\n';
+    }
     if (needPath) {
         regContent +=
             '[HKEY_LOCAL_MACHINE\\SOFTWARE\\Electronic Arts\\RoadRash 95]\r\n' +
