@@ -1165,6 +1165,34 @@ async function launchGame(gameId, opts = {}) {
     return { ok: true, method: spec.method };
 }
 
+// Every Epic game the account owns, as legendary's `list --json` entries.
+//
+// ⚠️ Not a bare `legendary list`. With no --platform it lists games for the HOST's platform,
+// and on macOS that means only games with a Mac build: measured on a real account, 7 of 43.
+// Callers treated that as the whole library, and syncOwnedLibrary goes further, pruning every
+// uninstalled Epic title missing from it as refunded, so each sync deleted the account's
+// Windows-only games from the library. Linux was never affected: its default is Windows.
+//
+// So each platform is asked in turn (Windows first, it is the superset in practice) and the
+// lists are merged by app_name, which also keeps a hypothetical Mac-only title. `complete`
+// is true only when every platform answered, and is what makes pruning safe: half a list
+// must never be taken for the whole one.
+async function legendaryListOwned() {
+    const platforms = host.id === 'darwin' ? ['Windows', 'Mac'] : [null];
+    const byName = new Map();
+    let complete = true, firstError = null, anyOk = false;
+    for (const p of platforms) {
+        const r = await runLegendary(p ? ['list', '--json', '--platform', p] : ['list', '--json']);
+        if (!r.ok) { complete = false; firstError = firstError || r; continue; }
+        try {
+            for (const g of JSON.parse(r.stdout || '[]')) if (g && g.app_name && !byName.has(g.app_name)) byName.set(g.app_name, g);
+            anyOk = true;
+        } catch { complete = false; firstError = firstError || { ok: false, error: 'Failed to parse legendary output.' }; }
+    }
+    if (!anyOk) return { ok: false, error: (firstError && (firstError.error || firstError.stderr)) || 'Not logged in to Epic.', games: [] };
+    return { ok: true, complete, games: [...byName.values()] };
+}
+
 function runLegendary(args) {
     const leg = findLegendary();
     if (!leg) return Promise.resolve({ ok: false, error: 'legendary not found' });
@@ -2254,10 +2282,10 @@ async function syncOwnedLibrary() {
 
     // ── Epic (legendary) ──────────────────────────────────────────────────────
     if (findLegendary()) {
-        const r = await runLegendary(['list', '--json']);
+        const r = await legendaryListOwned();
         if (r.ok) {
             try {
-                const all = JSON.parse(r.stdout || '[]');
+                const all = r.games;
                 result.epic.loggedIn = true;
                 result.epic.total = all.length;
                 const stmt = db.prepare(`
@@ -2274,16 +2302,17 @@ async function syncOwnedLibrary() {
                     return n;
                 });
                 result.epic.added = tx(all);
-                // legendary always lists the FULL owned set → a non-empty list means we can
-                // safely prune Epic titles that dropped out of it (refunds/revoked keys).
-                if (all.length) {
+                // A complete owned set (every platform answered, see legendaryListOwned) means
+                // titles missing from it really are gone (refunds, revoked keys) and can be
+                // pruned. Anything less and nothing is removed.
+                if (all.length && r.complete) {
                     result.epic.removedIds = pruneUnowned('epic', new Set(all.map(g => String(g.app_name))));
                     result.epic.removed = result.epic.removedIds.length;
                 }
             } catch { result.epic.error = 'Failed to parse legendary output.'; }
         } else {
             // Not logged in / legendary error, surface quietly (loggedIn stays false).
-            result.epic.error = (r.error || r.stderr || '').trim() || 'Not logged in to Epic.';
+            result.epic.error = String(r.error || '').trim() || 'Not logged in to Epic.';
         }
     }
 
@@ -2494,7 +2523,7 @@ module.exports = {
     which, findLegendary, findGogdl, findComet, findUmu, findWineCached, findRuntime,
     scanProtonVersions, resolveProton, isProtonDir, diagnoseLaunchFailure,
     GOG_CLIENT_ID, GOG_CLIENT_SECRET, GOG_REDIRECT_URI,
-    syncSharedDb, headlessInstall, headlessUninstall, launchGame, runLegendary, prefixPathForGame,
+    syncSharedDb, headlessInstall, headlessUninstall, launchGame, runLegendary, legendaryListOwned, prefixPathForGame,
     getGameInstallInfo, runRedist, injectGogRegistry, gogFetch, getGogToken,
     gogCatalogPlatforms,
     writeGogAuthConfig, findGogInstallResult, findLinuxGameExe,

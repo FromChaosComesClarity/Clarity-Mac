@@ -746,10 +746,12 @@ ipcMain.handle('legendary-login', event => {
 
 // List all owned Epic games (installed or not via legendary)
 ipcMain.handle('legendary-list-owned', async () => {
-    const r = await runLegendary(['list', '--json']);
-    if (!r.ok && r.error) return { ok: false, error: r.error };
+    // Both platforms on macOS, see legendaryListOwned: a bare `legendary list` here returns
+    // only the games with a Mac build.
+    const r = await installerEngine.legendaryListOwned();
+    if (!r.ok) return { ok: false, error: r.error };
     try {
-        const all = JSON.parse(r.stdout);
+        const all = r.games;
         return {
             ok: true,
             games: all.map(g => ({
