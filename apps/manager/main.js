@@ -747,7 +747,7 @@ ipcMain.handle('get-install-size', async (_, installerGameId, reqPlatform) => {
         if (!platform) { try { platform = _installerEngineDb.prepare("SELECT platform FROM games WHERE app_id=? AND store=?").get(parsed.appId, parsed.store)?.platform; } catch {} }
         return installerEngine.gogInstallInfo(parsed.appId, platform || 'linux');
     }
-    if (parsed.store === 'epic') return installerEngine.epicInstallInfo(parsed.appId);
+    if (parsed.store === 'epic') return installerEngine.epicInstallInfo(parsed.appId, reqPlatform || null);
     return null;
 });
 

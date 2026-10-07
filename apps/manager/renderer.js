@@ -1335,7 +1335,9 @@ async function openInstallerInstall(game) {
     try {
         const pinfo = await window.api.installerPlatforms(gid);
         const avail = pinfo.platforms || [];
-        hasChoice = /^gog_/i.test(gid) && avail.includes(nativeKey) && avail.includes('windows');
+        // Epic too: legendary lists each game per platform, and the sync records which builds
+        // exist the same way GOG's catalogue does.
+        hasChoice = /^(gog|epic)_/i.test(gid) && avail.includes(nativeKey) && avail.includes('windows');
         selectedPlatform = pinfo.platform === nativeKey ? nativeKey : 'windows';
     } catch { hasChoice = false; }
     if (platRow) platRow.style.display = hasChoice ? 'flex' : 'none';

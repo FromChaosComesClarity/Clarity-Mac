@@ -535,8 +535,16 @@ async function headlessInstall(store, appId, platform, installDir, opts = {}) {
         writeProgress({ ...base, step: 'downloading', percent: 0, message: 'Starting download...' });
         await new Promise(res => { const p = spawn(leg, ['uninstall', appId, '-y'], { stdio: 'ignore' }); p.on('close', res); p.on('error', res); });
 
+        // The build to install: the one chosen in the dialog, else the game's own default.
+        // Never left to legendary, whose default on macOS is the Mac build, which a
+        // Windows-only game does not have, so the install would fail outright.
+        let epicPlat = platform || null;
+        if (!epicPlat) {
+            try { const row = db?.prepare("SELECT platform, platforms FROM games WHERE app_id=? AND store='epic'").get(appId); epicPlat = row?.platform || epicDefaultPlatform(row?.platforms); } catch {}
+        }
+        epicPlat = String(epicPlat || 'windows').toLowerCase() === 'osx' ? 'osx' : 'windows';
         const dlOk = await new Promise(resolve => {
-            const proc = spawn(leg, ['install', appId, '--base-path', dir, '-y'], { stdio: ['ignore', 'pipe', 'pipe'], detached: true });
+            const proc = spawn(leg, ['install', appId, '--base-path', dir, '--platform', legendaryPlatformArg(epicPlat), '-y'], { stdio: ['ignore', 'pipe', 'pipe'], detached: true });
             _activeInstallProc = proc;
             let buf = '';
             const onData = d => {
@@ -557,8 +565,10 @@ async function headlessInstall(store, appId, platform, installDir, opts = {}) {
         writeProgress({ ...base, step: 'installing', percent: 100, message: 'Finalizing...' });
         try {
             // Same as the GOG branch above: create the row if the library sync never has.
-            const game = ensureGameRow('epic', appId, title, null);
-            if (game) { const info = await getGameInstallInfo(appId); if (info) db.prepare("UPDATE games SET installed=1, install_path=?, executable=? WHERE id=?").run(info.install_path, info.executable, game.id); }
+            const game = ensureGameRow('epic', appId, title, epicPlat);
+            // platform recorded with the install: it is what tells launchGame whether to run
+            // the game natively or through CrossOver.
+            if (game) { const info = await getGameInstallInfo(appId); if (info) db.prepare("UPDATE games SET installed=1, install_path=?, executable=?, platform=? WHERE id=?").run(info.install_path, info.executable, epicPlat, game.id); }
         } catch {}
         syncSharedDb(appId, true);
         writeProgress({ ...base, step: 'done', percent: 100, message: 'Installation complete!', done: true });
@@ -1177,6 +1187,18 @@ async function launchGame(gameId, opts = {}) {
 // lists are merged by app_name, which also keeps a hypothetical Mac-only title. `complete`
 // is true only when every platform answered, and is what makes pruning safe: half a list
 // must never be taken for the whole one.
+// library.db's platform key to legendary's --platform value.
+function legendaryPlatformArg(platform) {
+    return String(platform || '').toLowerCase() === 'osx' ? 'Mac' : 'Windows';
+}
+
+// The build an Epic game installs when nobody chose: native when the game has one, which
+// is GOG's rule here too, otherwise Windows.
+function epicDefaultPlatform(platforms) {
+    const list = String(platforms || '').split(',').map(x => x.trim());
+    return host.id === 'darwin' && list.includes('osx') ? 'osx' : 'windows';
+}
+
 async function legendaryListOwned() {
     const platforms = host.id === 'darwin' ? ['Windows', 'Mac'] : [null];
     const byName = new Map();
@@ -1185,7 +1207,15 @@ async function legendaryListOwned() {
         const r = await runLegendary(p ? ['list', '--json', '--platform', p] : ['list', '--json']);
         if (!r.ok) { complete = false; firstError = firstError || r; continue; }
         try {
-            for (const g of JSON.parse(r.stdout || '[]')) if (g && g.app_name && !byName.has(g.app_name)) byName.set(g.app_name, g);
+            // Which builds a game has is exactly which lists it appears in; kept as the same
+            // keys library.db uses for GOG ('windows', 'osx') so one platform choice serves both.
+            const key = p === 'Mac' ? 'osx' : 'windows';
+            for (const g of JSON.parse(r.stdout || '[]')) {
+                if (!g || !g.app_name) continue;
+                if (!byName.has(g.app_name)) byName.set(g.app_name, { ...g, _platforms: [] });
+                const e = byName.get(g.app_name);
+                if (!e._platforms.includes(key)) e._platforms.push(key);
+            }
             anyOk = true;
         } catch { complete = false; firstError = firstError || { ok: false, error: 'Failed to parse legendary output.' }; }
     }
@@ -2289,15 +2319,25 @@ async function syncOwnedLibrary() {
                 result.epic.loggedIn = true;
                 result.epic.total = all.length;
                 const stmt = db.prepare(`
-                    INSERT OR IGNORE INTO games (id, title, store, app_id, install_path, executable, installed, version)
-                    VALUES (?, ?, 'epic', ?, ?, ?, 0, ?)
+                    INSERT OR IGNORE INTO games (id, title, store, app_id, install_path, executable, installed, version, platform, platforms)
+                    VALUES (?, ?, 'epic', ?, ?, ?, 0, ?, ?, ?)
+                `);
+                // Which builds exist, refreshed every sync. The chosen platform is only filled
+                // in where it is still empty: an installed game keeps the build it was
+                // installed as.
+                const plat = db.prepare(`
+                    UPDATE games SET platforms = ?, platform = COALESCE(NULLIF(platform, ''), ?)
+                    WHERE store = 'epic' AND app_id = ?
                 `);
                 const tx = db.transaction(list => {
                     let n = 0;
                     for (const g of list) {
                         const title = g.app_title || g.metadata?.title || 'Unknown';
-                        const info = stmt.run('epic_' + g.app_name, title, g.app_name, null, null, null);
+                        const platforms = (g._platforms || []).join(',');
+                        const def = epicDefaultPlatform(platforms);
+                        const info = stmt.run('epic_' + g.app_name, title, g.app_name, null, null, null, def, platforms);
                         if (info.changes) n++;
+                        if (platforms) plat.run(platforms, def, g.app_name);
                     }
                     return n;
                 });
@@ -2499,11 +2539,17 @@ async function epicListUpdates() {
 }
 
 // Epic download/disk size via legendary info.
-async function epicInstallInfo(appName) {
+// ⚠️ For a named platform. With none, legendary on macOS asks about the MAC build, and for a
+// Windows-only game there is none: "Asset information ... is missing", and no size at all.
+// Measured on Alan Wake 2: nothing without --platform, 97.88 GiB to download with Windows.
+async function epicInstallInfo(appName, platform) {
     const leg = findLegendary(); if (!leg) return null;
+    if (!platform) {
+        try { const row = db?.prepare("SELECT platform, platforms FROM games WHERE app_id=? AND store='epic'").get(appName); platform = row?.platform || epicDefaultPlatform(row?.platforms); } catch {}
+    }
     return new Promise(resolve => {
         let out = '';
-        const proc = spawn(leg, ['info', appName], { stdio: ['ignore', 'pipe', 'pipe'] });
+        const proc = spawn(leg, ['info', appName, '--platform', legendaryPlatformArg(platform)], { stdio: ['ignore', 'pipe', 'pipe'] });
         proc.stdout.on('data', d => out += d);
         proc.stderr.on('data', d => out += d);
         proc.on('close', () => {
